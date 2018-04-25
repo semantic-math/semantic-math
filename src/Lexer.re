@@ -2,7 +2,9 @@ type operator =
   | Add
   | Sub
   | Mul
-  | Div;
+  | Div
+  | LEFT_PAREN
+  | RIGHT_PAREN;
 
 type token = [
   | `Operator(operator)
@@ -50,6 +52,8 @@ let lex = input : array(token) => {
            | "*" => Some(`Operator(Mul))
            | "-" => Some(`Operator(Sub))
            | "/" => Some(`Operator(Div))
+           | "(" => Some(`Operator(LEFT_PAREN))
+           | ")" => Some(`Operator(RIGHT_PAREN))
            | _ => None
            }
          | [|_, _, _, Some(num)|] => Some(`Number(num))

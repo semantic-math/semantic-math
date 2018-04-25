@@ -6,6 +6,8 @@ let printToken = token =>
     | Lexer.Sub => "sub"
     | Lexer.Div => "div"
     | Lexer.Mul => "mul"
+    | Lexer.LEFT_PAREN => "LEFT_PAREN"
+    | Lexer.RIGHT_PAREN => "RIGHT_PAREN"
     }
   | `Identifier(name) => {j|identifier = $name|j}
   | `Number(value) => {j|number = $value|j}
@@ -21,6 +23,8 @@ type node = [
 let precedence = op =>
   Lexer.(
     switch (op) {
+    | LEFT_PAREN
+    | RIGHT_PAREN => 0
     | Add
     | Sub => 1
     | Mul
@@ -39,6 +43,8 @@ exception Not_enough_operators;
 
 exception Unknown_error;
 
+exception Too_many_operands;
+
 let popOperands = (stack, arity) => {
   let children = [||];
   for (_ in 1 to arity) {
@@ -56,25 +62,41 @@ let popOperands = (stack, arity) => {
 let parse = tokens : node => {
   let operatorStack = Belt.MutableStack.make();
   let operandStack = Belt.MutableStack.make();
-
   let parseOperator = op =>
-    switch (Belt.MutableStack.top(operatorStack)) {
-    | Some((topOp, arity)) when op == topOp =>
-      replaceTop(operatorStack, (op, arity + 1))
-    | Some((topOp, arity)) when precedence(op) < precedence(topOp) =>
-      let children = popOperands(operandStack, arity);
-      Belt.MutableStack.pop(operatorStack) |> ignore;
-      Belt.MutableStack.push(operandStack, `Apply((topOp, children)));
-      /* case where the revealed operator matches the new operator */
-      switch (Belt.MutableStack.top(operatorStack)) {
-      | Some((topOp, arity)) when topOp == op =>
-        replaceTop(operatorStack, (op, arity + 1))
-      | _ => Belt.MutableStack.push(operatorStack, (op, 2))
+    switch (op) {
+    | Lexer.RIGHT_PAREN =>
+      let break = ref(false);
+      while (! break^) {
+        switch (Belt.MutableStack.pop(operatorStack)) {
+        | Some((topOp, arity)) =>
+          if (topOp == Lexer.LEFT_PAREN) {
+            break := true;
+          } else {
+            let children = popOperands(operandStack, arity);
+            Belt.MutableStack.push(operandStack, `Apply((topOp, children)));
+          }
+        | None => raise(Not_enough_operators)
+        };
       };
-    | Some(_) => Belt.MutableStack.push(operatorStack, (op, 2))
-    | None => Belt.MutableStack.push(operatorStack, (op, 2))
+    | Lexer.LEFT_PAREN => Belt.MutableStack.push(operatorStack, (op, 0))
+    | op =>
+      switch (Belt.MutableStack.top(operatorStack)) {
+      | Some((topOp, arity)) when op == topOp =>
+        replaceTop(operatorStack, (op, arity + 1))
+      | Some((topOp, arity)) when precedence(op) < precedence(topOp) =>
+        let children = popOperands(operandStack, arity);
+        Belt.MutableStack.pop(operatorStack) |> ignore;
+        Belt.MutableStack.push(operandStack, `Apply((topOp, children)));
+        /* case where the revealed operator matches the new operator */
+        switch (Belt.MutableStack.top(operatorStack)) {
+        | Some((topOp, arity)) when topOp == op =>
+          replaceTop(operatorStack, (op, arity + 1))
+        | _ => Belt.MutableStack.push(operatorStack, (op, 2))
+        };
+      | Some(_) => Belt.MutableStack.push(operatorStack, (op, 2))
+      | None => Belt.MutableStack.push(operatorStack, (op, 2))
+      }
     };
-
   tokens
   |> Array.iter(token =>
        switch (token) {
@@ -88,11 +110,15 @@ let parse = tokens : node => {
          | Some((op, arity)) =>
            let children = popOperands(operandStack, arity);
            Belt.MutableStack.push(operandStack, `Apply((op, children)));
-         | None => raise(Not_enough_operators)
+         | None =>
+           switch (Belt.MutableStack.size(operandStack)) {
+           | 0 => raise(Not_enough_operands)
+           | 1 => ()
+           | _ => raise(Too_many_operands)
+           }
          }
        }
      );
-
   switch (Belt.MutableStack.pop(operandStack)) {
   | Some(value) => value
   | None => raise(Unknown_error)
@@ -105,6 +131,8 @@ let opToString = (op: Lexer.operator) =>
   | Sub => "-"
   | Mul => "*"
   | Div => "/"
+  | LEFT_PAREN => "("
+  | RIGHT_PAREN => ")"
   };
 
 let rec nodeToString = node =>
@@ -122,7 +150,6 @@ let rec nodeToString = node =>
   | `Identifier(name) => name
   | `Number(value) => value
   };
-
 
 let sum = Array.fold_left((+.), 0.);
 
