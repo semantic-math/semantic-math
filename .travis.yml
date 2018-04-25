@@ -1,8 +1,11 @@
 language: node_js
 node_js:
   - node
+cache:
+  directories:
+    - node_modules
 before_script:
-  - npm install -g bs-platform
+  - npm install bs-platform
 script:
   - npm run build
   - npm test
