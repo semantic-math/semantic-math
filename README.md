@@ -1,4 +1,6 @@
-# re-math-parser
+# re-math-parser 
+
+[![Build Status](https://travis-ci.org/kevinbarabash/re-math-parser.svg?branch=master)](https://travis-ci.org/kevinbarabash/re-math-parser)
 
 A math parser built in Reason.
 
