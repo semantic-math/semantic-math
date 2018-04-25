@@ -1,9 +1,3 @@
-Js.log("Hello, BuckleScript and Reason!");
-
-let tokens = Lexer.lex("1 + 2*3 + 4*5 + 6");
-
-Js.Array.push(`End, tokens);
-
 let printToken = token =>
   switch (token) {
   | `Operator(op) =>
@@ -17,8 +11,6 @@ let printToken = token =>
   | `Number(value) => {j|number = $value|j}
   | `End => "end"
   };
-
-tokens |> Array.map(printToken) |> Array.iter(Js.log);
 
 type node = [
   | `Apply(Lexer.operator, array(node))
@@ -55,6 +47,8 @@ let popOperands = (stack, arity) => {
     | None => raise(Not_enough_operands)
     };
   };
+  /* reverse the children so they're in the right order */
+  Js.Array.reverseInPlace(children) |> ignore;
   children;
 };
 
@@ -105,8 +99,6 @@ let parse = tokens : node => {
   };
 };
 
-let ast = parse(tokens);
-
 let opToString = (op: Lexer.operator) =>
   switch (op) {
   | Add => "+"
@@ -131,7 +123,6 @@ let rec nodeToString = node =>
   | `Number(value) => value
   };
 
-Js.log(nodeToString(ast));
 
 let sum = Array.fold_left((+.), 0.);
 
@@ -149,7 +140,3 @@ let rec evaluate = node =>
   | `Identifier(_) => 0. /* allow option to provide a map of values */
   | `Number(value) => float_of_string(value)
   };
-
-let result = evaluate(ast);
-
-Js.log(result);
