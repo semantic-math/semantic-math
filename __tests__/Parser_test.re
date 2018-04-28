@@ -24,6 +24,11 @@ describe("Parser", () => {
     testParser("1+2+3", "[+ 1 2 3]");
     testParser("1+2*3+4*5+6", "[+ 1 [* 2 3] [* 4 5] 6]");
   });
+  describe("multiplication", () => {
+    testParser("abc", "[* a b c]");
+    testParser("ab * cd", "[* [* a b] [* c d]]");
+    /* testParser("(a)(b)(c)", "[* a b c]"); */
+  });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
     testParser("(1+(2+(3+4)))", "[+ 1 [+ 2 [+ 3 4]]]");
