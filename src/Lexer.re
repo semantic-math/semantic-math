@@ -4,6 +4,8 @@ type operator =
   | Mul
   | Div
   | Neg
+  | Exp
+  | Eq
   | LEFT_PAREN
   | RIGHT_PAREN;
 
@@ -52,6 +54,8 @@ let lex = input : array(token) => {
            | "*" => Some(`Operator(Mul))
            | "-" => Some(`Operator(Sub))
            | "/" => Some(`Operator(Div))
+           | "^" => Some(`Operator(Exp))
+           | "=" => Some(`Operator(Eq))
            | "(" => Some(`Operator(LEFT_PAREN))
            | ")" => Some(`Operator(RIGHT_PAREN))
            | _ => None

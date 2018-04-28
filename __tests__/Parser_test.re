@@ -20,6 +20,8 @@ describe("Parser", () => {
     testParser("(1+(2+(3+4)))", "[+ 1 [+ 2 [+ 3 4]]]");
     testParser("(3+4)", "[+ 3 4]");
     testParser("((3+4))", "[+ 3 4]");
+    testParser("(2)", "2");
+    testParser("(-2)", "[neg 2]");
   });
   describe("subtraction/negation", () => {
     testParser("1-2", "[+ 1 [neg 2]]");
@@ -29,5 +31,14 @@ describe("Parser", () => {
     testParser("1 - (2 * 3)", "[+ 1 [neg [* 2 3]]]");
     testParser("-(2 * 3)", "[neg [* 2 3]]");
     testParser("-2 * 3", "[* [neg 2] 3]");
+  });
+  describe("exponents", () => {
+    testParser("2^3", "[^ 2 3]");
+    testParser("2^3^4", "[^ 2 [^ 3 4]]");
+    testParser("-2^x", "[neg [^ 2 x]]");
+    testParser("(-2)^x", "[^ [neg 2] x]");
+  });
+  describe("equations", () => {
+    testParser("x + 5 = 10", "[= [+ x 5] 10]");
   });
 });

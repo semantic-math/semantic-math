@@ -7,6 +7,8 @@ let printToken = token =>
     | Lexer.Div => "div"
     | Lexer.Mul => "mul"
     | Lexer.Neg => "neg"
+    | Lexer.Exp => "exp"
+    | Lexer.Eq => "eq"
     | Lexer.LEFT_PAREN => "LEFT_PAREN"
     | Lexer.RIGHT_PAREN => "RIGHT_PAREN"
     }
@@ -24,13 +26,15 @@ type node = [
 let precedence = op =>
   Lexer.(
     switch (op) {
-    | LEFT_PAREN
+    | Eq => -1
+    | LEFT_PAREN => 0
     | RIGHT_PAREN => 0
-    | Add
+    | Add => 1
     | Sub => 1
-    | Mul
+    | Mul => 2
     | Div => 2
     | Neg => 3
+    | Exp => 4
     }
   );
 
@@ -77,7 +81,10 @@ let parse = (tokens: array(Lexer.token)) : node => {
         switch (token) {
         | `Operator(Lexer.Sub) =>
           switch (last(accum)) {
-          | Some(token) when token != `Operator(Lexer.Neg) =>
+          | Some(token)
+              when
+                token != `Operator(Lexer.Neg)
+                && token != `Operator(Lexer.LEFT_PAREN) =>
             Js.Array.push(`Operator(Lexer.Add), accum) |> ignore
           | _ => ()
           };
@@ -90,7 +97,7 @@ let parse = (tokens: array(Lexer.token)) : node => {
       tokens,
     );
   /* Array.iter(token => Js.log(token), tokens); */
-  /* TODO(kevinb): limit this to only accept Add and Mul */
+  /* TODO(kevinb): split this into 2-arity and n-arity cases */
   let parseAddOrMul = op =>
     switch (Belt.MutableStack.top(operatorStack)) {
     | Some((topOp, arity)) when op == topOp =>
@@ -105,8 +112,7 @@ let parse = (tokens: array(Lexer.token)) : node => {
         replaceTop(operatorStack, (op, arity + 1))
       | _ => Belt.MutableStack.push(operatorStack, (op, 2))
       };
-    | Some(_) => Belt.MutableStack.push(operatorStack, (op, 2))
-    | None => Belt.MutableStack.push(operatorStack, (op, 2))
+    | _ => Belt.MutableStack.push(operatorStack, (op, 2))
     };
   let parseOperator = op =>
     switch (op) {
@@ -128,6 +134,8 @@ let parse = (tokens: array(Lexer.token)) : node => {
     | Lexer.Add => parseAddOrMul(op)
     | Lexer.Mul => parseAddOrMul(op)
     | Lexer.Neg => Belt.MutableStack.push(operatorStack, (Lexer.Neg, 1))
+    | Lexer.Exp => Belt.MutableStack.push(operatorStack, (Lexer.Exp, 2))
+    | Lexer.Eq => parseAddOrMul(op)
     | _ => raise(Unknown_error)
     };
   /* Process each token. */
@@ -168,6 +176,8 @@ let opToString = (op: Lexer.operator) =>
   | Mul => "*"
   | Div => "/"
   | Neg => "neg"
+  | Exp => "^"
+  | Eq => "="
   | LEFT_PAREN => "("
   | RIGHT_PAREN => ")"
   };
