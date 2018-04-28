@@ -3,6 +3,7 @@ type operator =
   | Sub
   | Mul
   | Div
+  | Neg
   | LEFT_PAREN
   | RIGHT_PAREN;
 
@@ -10,7 +11,6 @@ type token = [
   | `Operator(operator)
   | `Identifier(string)
   | `Number(string)
-  | `End
 ];
 
 let idSubRe = "[a-zA-Z][a-zA-Z0-9]*";
@@ -61,6 +61,5 @@ let lex = input : array(token) => {
          }
        )
     |. Belt.Array.keepMap(x => x);
-  Js.Array.push(`End, tokens) |> ignore;
   tokens;
 };

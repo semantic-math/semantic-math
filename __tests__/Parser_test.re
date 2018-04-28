@@ -21,4 +21,10 @@ describe("Parser", () => {
     testParser("(3+4)", "[+ 3 4]");
     testParser("((3+4))", "[+ 3 4]");
   });
+  describe("subtraction", () => {
+    testParser("1-2", "[+ 1 [neg 2]]");
+    testParser("1--2", "[+ 1 [neg [neg 2]]]");
+    testParser("-1", "[neg 1]");
+    testParser("--1", "[neg [neg 1]]");
+  });
 });

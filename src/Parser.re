@@ -6,6 +6,7 @@ let printToken = token =>
     | Lexer.Sub => "sub"
     | Lexer.Div => "div"
     | Lexer.Mul => "mul"
+    | Lexer.Neg => "neg"
     | Lexer.LEFT_PAREN => "LEFT_PAREN"
     | Lexer.RIGHT_PAREN => "RIGHT_PAREN"
     }
@@ -29,6 +30,7 @@ let precedence = op =>
     | Sub => 1
     | Mul
     | Div => 2
+    | Neg => 3
     }
   );
 
@@ -58,10 +60,54 @@ let popOperands = (stack, arity) => {
   children;
 };
 
+let last = arr =>
+  switch (Array.length(arr)) {
+  | 0 => None
+  | n => Some(arr[n - 1])
+  };
+
 /* return a node */
-let parse = tokens : node => {
+let parse = (tokens: array(Lexer.token)) : node => {
   let operatorStack = Belt.MutableStack.make();
   let operandStack = Belt.MutableStack.make();
+  /* replace `a - b` with `a + neg b` */
+  let tokens =
+    Array.fold_left(
+      (accum, token) => {
+        switch (token) {
+        | `Operator(Lexer.Sub) =>
+          switch (last(accum)) {
+          | Some(token) when token != `Operator(Lexer.Neg) =>
+            Js.Array.push(`Operator(Lexer.Add), accum) |> ignore
+          | _ => ()
+          };
+          Js.Array.push(`Operator(Lexer.Neg), accum) |> ignore;
+        | _ => Js.Array.push(token, accum) |> ignore
+        };
+        accum;
+      },
+      [||],
+      tokens,
+    );
+  /* Array.iter(token => Js.log(token), tokens); */
+  /* TODO(kevinb): limit this to only accept Add and Mul */
+  let parseAddOrMul = op =>
+    switch (Belt.MutableStack.top(operatorStack)) {
+    | Some((topOp, arity)) when op == topOp =>
+      replaceTop(operatorStack, (op, arity + 1))
+    | Some((topOp, arity)) when precedence(op) < precedence(topOp) =>
+      let children = popOperands(operandStack, arity);
+      Belt.MutableStack.pop(operatorStack) |> ignore;
+      Belt.MutableStack.push(operandStack, `Apply((topOp, children)));
+      /* case where the revealed operator matches the new operator */
+      switch (Belt.MutableStack.top(operatorStack)) {
+      | Some((topOp, arity)) when topOp == op =>
+        replaceTop(operatorStack, (op, arity + 1))
+      | _ => Belt.MutableStack.push(operatorStack, (op, 2))
+      };
+    | Some(_) => Belt.MutableStack.push(operatorStack, (op, 2))
+    | None => Belt.MutableStack.push(operatorStack, (op, 2))
+    };
   let parseOperator = op =>
     switch (op) {
     | Lexer.RIGHT_PAREN =>
@@ -79,24 +125,12 @@ let parse = tokens : node => {
         };
       };
     | Lexer.LEFT_PAREN => Belt.MutableStack.push(operatorStack, (op, 0))
-    | op =>
-      switch (Belt.MutableStack.top(operatorStack)) {
-      | Some((topOp, arity)) when op == topOp =>
-        replaceTop(operatorStack, (op, arity + 1))
-      | Some((topOp, arity)) when precedence(op) < precedence(topOp) =>
-        let children = popOperands(operandStack, arity);
-        Belt.MutableStack.pop(operatorStack) |> ignore;
-        Belt.MutableStack.push(operandStack, `Apply((topOp, children)));
-        /* case where the revealed operator matches the new operator */
-        switch (Belt.MutableStack.top(operatorStack)) {
-        | Some((topOp, arity)) when topOp == op =>
-          replaceTop(operatorStack, (op, arity + 1))
-        | _ => Belt.MutableStack.push(operatorStack, (op, 2))
-        };
-      | Some(_) => Belt.MutableStack.push(operatorStack, (op, 2))
-      | None => Belt.MutableStack.push(operatorStack, (op, 2))
-      }
+    | Lexer.Add => parseAddOrMul(op)
+    | Lexer.Mul => parseAddOrMul(op)
+    | Lexer.Neg => Belt.MutableStack.push(operatorStack, (Lexer.Neg, 1))
+    | _ => raise(Unknown_error)
     };
+  /* Process each token. */
   tokens
   |> Array.iter(token =>
        switch (token) {
@@ -105,23 +139,25 @@ let parse = tokens : node => {
          Belt.MutableStack.push(operandStack, `Identifier(name))
        | `Number(value) =>
          Belt.MutableStack.push(operandStack, `Number(value))
-       | `End =>
-         switch (Belt.MutableStack.pop(operatorStack)) {
-         | Some((op, arity)) =>
-           let children = popOperands(operandStack, arity);
-           Belt.MutableStack.push(operandStack, `Apply((op, children)));
-         | None =>
-           switch (Belt.MutableStack.size(operandStack)) {
-           | 0 => raise(Not_enough_operands)
-           | 1 => ()
-           | _ => raise(Too_many_operands)
-           }
-         }
        }
      );
-  switch (Belt.MutableStack.pop(operandStack)) {
-  | Some(value) => value
-  | None => raise(Unknown_error)
+  /* Clean up any operators that are still on the operator stack. */
+  Belt.MutableStack.dynamicPopIter(
+    operatorStack,
+    ((op, arity)) => {
+      let children = popOperands(operandStack, arity);
+      Belt.MutableStack.push(operandStack, `Apply((op, children)));
+    },
+  );
+  /* Check if we have a single value left and return that value in that case. */
+  switch (Belt.MutableStack.size(operandStack)) {
+  | 0 => raise(Not_enough_operands)
+  | 1 =>
+    switch (Belt.MutableStack.pop(operandStack)) {
+    | Some(value) => value
+    | None => raise(Unknown_error)
+    }
+  | _ => raise(Too_many_operands)
   };
 };
 
@@ -131,6 +167,7 @@ let opToString = (op: Lexer.operator) =>
   | Sub => "-"
   | Mul => "*"
   | Div => "/"
+  | Neg => "neg"
   | LEFT_PAREN => "("
   | RIGHT_PAREN => ")"
   };
