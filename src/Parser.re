@@ -121,7 +121,7 @@ let parse = (tokens: array(Lexer.token)) : node => {
       };
     | _ => Stack.push(operatorStack, (op, 2))
     };
-  let parseOperator = op =>
+  let parseOperator = (op, prevToken) =>
     switch (op) {
     | Lexer.RIGHT_PAREN =>
       let break = ref(false);
@@ -136,7 +136,20 @@ let parse = (tokens: array(Lexer.token)) : node => {
         | None => raise(Unmatched_right_paren)
         };
       };
-    | Lexer.LEFT_PAREN => Stack.push(operatorStack, (op, 0))
+    | Lexer.LEFT_PAREN =>
+      switch (prevToken) {
+      | Some(`Operator(prevOp)) =>
+        if (prevOp == Lexer.RIGHT_PAREN) {
+          /* handle implicit multiplication */
+          switch (Stack.top(operatorStack)) {
+          | Some((topOp, arity)) when Lexer.Mul == topOp =>
+            replaceTop(operatorStack, (Lexer.Mul, arity + 1))
+          | _ => Stack.push(operatorStack, (Lexer.Mul, 2))
+          };
+        }
+      | _ => ()
+      };
+      Stack.push(operatorStack, (op, 0));
     | Lexer.Add => parseBinaryOp(~collate=true, op)
     | Lexer.Mul => parseBinaryOp(~collate=true, op)
     | Lexer.Neg => Stack.push(operatorStack, (Lexer.Neg, 1))
@@ -146,14 +159,16 @@ let parse = (tokens: array(Lexer.token)) : node => {
     };
   /* Process each token. */
   tokens
-  |> Array.iter(token =>
+  |> Array.iteri((i, token) => {
+       let lastToken = i > 0 ? Some(tokens[i - 1]) : None;
        switch (token) {
-       | `Operator(op) => parseOperator(op)
+       | `Operator(op) => parseOperator(op, lastToken)
        | `Identifier(name) =>
          switch (String.length(name)) {
          | 0 => raise(Empty_identifier)
          | 1 => Stack.push(operandStack, `Identifier(name))
          | _ =>
+           /* turn multi-character identifiers into multiplication */
            let children =
              Array.map(
                name => `Identifier(name),
@@ -162,8 +177,8 @@ let parse = (tokens: array(Lexer.token)) : node => {
            Stack.push(operandStack, `Apply((Lexer.Mul, children)));
          }
        | `Number(value) => Stack.push(operandStack, `Number(value))
-       }
-     );
+       };
+     });
   /* Clean up any operators that are still on the operator stack. */
   Stack.dynamicPopIter(
     operatorStack,

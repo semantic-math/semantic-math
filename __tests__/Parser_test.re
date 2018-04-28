@@ -12,13 +12,10 @@ describe("Parser", () => {
       },
     );
   let testError = (expr, exc) =>
-    test(
-      expr ++ " raises " ++ Printexc.to_string(exc),
-      () => {
-        expect (fun () => {
-          Parser.parse(Lexer.lex(expr));
-        }) |> toThrowException (exc);
-      }
+    test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
+      expect(() =>
+        Parser.parse(Lexer.lex(expr))
+      ) |> toThrowException(exc)
     );
   describe("order of operations", () => {
     testParser("1+2+3", "[+ 1 2 3]");
@@ -27,7 +24,8 @@ describe("Parser", () => {
   describe("multiplication", () => {
     testParser("abc", "[* a b c]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
-    /* testParser("(a)(b)(c)", "[* a b c]"); */
+    testParser("(a)(b)(c)", "[* a b c]");
+    /* testParser("(a)(b) * (c)(d)", "[* a b c]"); */
   });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
