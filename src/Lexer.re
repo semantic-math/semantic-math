@@ -1,19 +1,32 @@
-type operator =
-  | Add
-  | Sub
-  | Mul
-  | Div
-  | Neg
-  | Exp
-  | Eq
+type token = 
+  | PLUS
+  | MINUS
+  | STAR
+  | SLASH
+  | CARET
+  | EQUAL
+  | GREATER_THAN
+  | LESS_THAN
   | LEFT_PAREN
-  | RIGHT_PAREN;
+  | RIGHT_PAREN
+  | IDENTIFIER(string)
+  | NUMBER(string);
 
-type token = [
-  | `Operator(operator)
-  | `Identifier(string)
-  | `Number(string)
-];
+let printToken = (token) =>
+  switch(token) {
+  | PLUS => "+"
+  | MINUS => "-"
+  | STAR => "*"
+  | SLASH => "/"
+  | CARET => "^"
+  | EQUAL => "="
+  | GREATER_THAN => ">"
+  | LESS_THAN => "<"
+  | LEFT_PAREN => "("
+  | RIGHT_PAREN => ")"
+  | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
+  | NUMBER(value) => {j|NUMBER($value)|j}
+  };
 
 let idSubRe = "[a-zA-Z][a-zA-Z0-9]*";
 let opSubRe = "<=|>=|!=|[\\<\\>\\!\\=\\(\\)\\+\\-\\/\\*\\^\\<\\>|\\,\\#\\_]";
@@ -47,20 +60,20 @@ let lex = input : array(token) => {
     getAllCaptures(input, regex)
     |> Array.map(capture =>
          switch (capture) {
-         | [|_, Some(ident), _, _|] => Some(`Identifier(ident))
+         | [|_, Some(ident), _, _|] => Some(IDENTIFIER(ident))
          | [|_, _, Some(oper), _|] =>
            switch (oper) {
-           | "+" => Some(`Operator(Add))
-           | "*" => Some(`Operator(Mul))
-           | "-" => Some(`Operator(Sub))
-           | "/" => Some(`Operator(Div))
-           | "^" => Some(`Operator(Exp))
-           | "=" => Some(`Operator(Eq))
-           | "(" => Some(`Operator(LEFT_PAREN))
-           | ")" => Some(`Operator(RIGHT_PAREN))
+           | "+" => Some(PLUS)
+           | "*" => Some(STAR)
+           | "-" => Some(MINUS)
+           | "/" => Some(SLASH)
+           | "^" => Some(CARET)
+           | "=" => Some(EQUAL)
+           | "(" => Some(LEFT_PAREN)
+           | ")" => Some(RIGHT_PAREN)
            | _ => None
            }
-         | [|_, _, _, Some(num)|] => Some(`Number(num))
+         | [|_, _, _, Some(num)|] => Some(NUMBER(num))
          | _ => None
          }
        )
