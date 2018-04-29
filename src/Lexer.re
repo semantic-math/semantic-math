@@ -13,7 +13,7 @@ type token =
   | IDENTIFIER(string)
   | NUMBER(string);
 
-let printToken = (token) =>
+let tokenToString = (token) =>
   switch(token) {
   | PLUS => "+"
   | MINUS => "-"
