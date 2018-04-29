@@ -63,5 +63,6 @@ describe("Parser", () => {
   describe("function", () => {
     testParser("f(x)", "[f x]");
     testParser("f(x, y)", "[f x y]");
+    testParser("f(g(x),y)", "[f [g x] y]");
   });
 });
