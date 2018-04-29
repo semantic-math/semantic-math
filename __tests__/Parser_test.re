@@ -23,9 +23,15 @@ describe("Parser", () => {
   });
   describe("multiplication", () => {
     testParser("abc", "[* a b c]");
+    testParser("abcd", "[* a b c d]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
+    /* testParser("2x", "[* 2 x]");
+    testParser("2xy", "[* 2 x y]"); */
+    testParser("x^2*y^2", "[* [^ x 2] [^ y 2]]");
+    testParser("x*y^2", "[* x [^ y 2]]");
+    testParser("xy^2", "[* x [^ y 2]]");
   });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
@@ -64,5 +70,6 @@ describe("Parser", () => {
     testParser("f(x)", "[f x]");
     testParser("f(x, y)", "[f x y]");
     testParser("f(g(x),y)", "[f [g x] y]");
+    testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
   });
 });

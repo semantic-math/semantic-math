@@ -1,7 +1,7 @@
 type operator =
   | Add
   | Sub
-  | Mul(bool) /* Mul(true) == implicit, Mul(false) == explicit */
+  | Mul([`Explicit | `Implicit])
   | Div
   | Exp
   | Neg
@@ -51,8 +51,8 @@ let precedence = op =>
   | RightParen => 1
   | Add
   | Sub => 2
-  | Mul(false) => 3
-  | Mul(true)
+  | Mul(`Explicit) => 3
+  | Mul(`Implicit)
   | Div => 4
   | Neg
   | Pos => 5
@@ -112,13 +112,9 @@ let parse = tokens => {
     while (! break^) {
       switch (Stack.pop(operatorStack)) {
       | Some((op, arity)) =>
-        if (op == LeftParen) {
-          if (all) {
-            raise(Unmatched_left_paren);
-          } else {
-            break := true;
-          };
-        } else {
+        switch (op) {
+        | LeftParen => all ? raise(Unmatched_left_paren) : break := true;
+        | _ => 
           let children = popOperands(arity);
           switch (op, children) {
           | (Func(_), [|Apply(Comma, args)|]) =>
@@ -129,12 +125,7 @@ let parse = tokens => {
           | _ => Stack.push(operandStack, Apply(op, children))
           };
         }
-      | None =>
-        if (all) {
-          break := true;
-        } else {
-          raise(Unmatched_right_paren);
-        }
+      | None => all ? break := true : raise(Unmatched_right_paren);
       };
     };
   };
@@ -145,7 +136,8 @@ let parse = tokens => {
         switch (token) {
         | Lexer.MINUS =>
           switch (last(accum)) {
-          | Some(token) when token != Lexer.MINUS && token != Lexer.LEFT_PAREN =>
+          | Some(prevToken)
+              when prevToken != Lexer.MINUS && prevToken != Lexer.LEFT_PAREN =>
             Js.Array.push(Lexer.PLUS, accum) |> ignore
           | _ => ()
           };
@@ -193,9 +185,12 @@ let parse = tokens => {
            }
          | _ =>
            /* turn multi-character identifiers into multiplication */
-           let children =
-             Array.map(name => Identifier(name), Js.String.split("", name));
-           Stack.push(operandStack, Apply(Mul(true), children));
+           let letters = Js.String.split("", name);
+           Stack.push(operandStack, Identifier(letters[0]));
+           for (j in 1 to Array.length(letters) - 1) {
+             parseBinaryOp(~collate=true, Mul(`Implicit));
+             Stack.push(operandStack, Identifier(letters[j]));
+           };
          }
        | Lexer.NUMBER(value) => Stack.push(operandStack, Number(value))
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
@@ -204,15 +199,15 @@ let parse = tokens => {
          | Some(Lexer.RIGHT_PAREN) =>
            /* handle implicit multiplication */
            switch (Stack.top(operatorStack)) {
-           | Some((topOp, arity)) when topOp == Mul(true) =>
-             replaceTop(operatorStack, (Mul(true), arity + 1))
-           | _ => Stack.push(operatorStack, (Mul(true), 2))
+           | Some((Mul(`Implicit), arity)) =>
+             replaceTop(operatorStack, (Mul(`Implicit), arity + 1))
+           | _ => Stack.push(operatorStack, (Mul(`Implicit), 2))
            }
          | _ => ()
          };
          Stack.push(operatorStack, (LeftParen, 0));
        | Lexer.PLUS => parseBinaryOp(~collate=true, Add)
-       | Lexer.STAR => parseBinaryOp(~collate=true, Mul(false))
+       | Lexer.STAR => parseBinaryOp(~collate=true, Mul(`Explicit))
        | Lexer.MINUS => Stack.push(operatorStack, (Neg, 1))
        | Lexer.CARET => parseBinaryOp(Exp)
        | Lexer.EQUAL => parseBinaryOp(~collate=true, Eq)
