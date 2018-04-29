@@ -25,7 +25,7 @@ describe("Parser", () => {
     testParser("abc", "[* a b c]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
     testParser("(a)(b)(c)", "[* a b c]");
-    /* testParser("(a)(b) * (c)(d)", "[* a b c]"); */
+    testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
   });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");

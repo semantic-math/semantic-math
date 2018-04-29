@@ -1,7 +1,11 @@
 type operator =
   | Add
   | Sub
-  | Mul
+  /**
+   * Mul(true) is implicit multiplication
+   * Mul(false) is explicit multiplication
+   */
+  | Mul(bool)
   | Div
   | Exp
   | Neg
@@ -30,11 +34,12 @@ let precedence = op =>
   | RightParen => 1
   | Add
   | Sub => 2
-  | Mul
-  | Div => 3
+  | Mul(false) => 3
+  | Mul(true)
+  | Div => 4
   | Neg
-  | Pos => 4
-  | Exp => 5
+  | Pos => 5
+  | Exp => 6
   };
 
 exception Missing_operator;
@@ -130,7 +135,7 @@ let parse = tokens => {
            /* turn multi-character identifiers into multiplication */
            let children =
              Array.map(name => Identifier(name), Js.String.split("", name));
-           Stack.push(operandStack, Apply(Mul, children));
+           Stack.push(operandStack, Apply(Mul(true), children));
          }
        | Lexer.NUMBER(value) => Stack.push(operandStack, Number(value))
        | Lexer.RIGHT_PAREN =>
@@ -152,16 +157,16 @@ let parse = tokens => {
            if (prevOp == Lexer.RIGHT_PAREN) {
              /* handle implicit multiplication */
              switch (Stack.top(operatorStack)) {
-             | Some((topOp, arity)) when topOp == Mul =>
-               replaceTop(operatorStack, (Mul, arity + 1))
-             | _ => Stack.push(operatorStack, (Mul, 2))
+             | Some((topOp, arity)) when topOp == Mul(true) =>
+               replaceTop(operatorStack, (Mul(true), arity + 1))
+             | _ => Stack.push(operatorStack, (Mul(true), 2))
              };
            }
          | _ => ()
          };
          Stack.push(operatorStack, (LeftParen, 0));
        | Lexer.PLUS => parseBinaryOp(~collate=true, Add)
-       | Lexer.STAR => parseBinaryOp(~collate=true, Mul)
+       | Lexer.STAR => parseBinaryOp(~collate=true, Mul(false))
        | Lexer.MINUS => Stack.push(operatorStack, (Neg, 1))
        | Lexer.CARET => parseBinaryOp(Exp)
        | Lexer.EQUAL => parseBinaryOp(~collate=true, Eq)
@@ -194,7 +199,7 @@ let opToString = (op: operator) =>
   switch (op) {
   | Add => "+"
   | Sub => "-"
-  | Mul => "*"
+  | Mul(_) => "*"
   | Div => "/"
   | Neg => "neg"
   | Pos => "pos"
@@ -232,7 +237,7 @@ let rec evaluate = node =>
     let children = Array.map(evaluate, children);
     switch (op) {
     | Add => children |> sum
-    | Mul => children |> prod
+    | Mul(_) => children |> prod
     | _ => 0.
     };
   | Identifier(_) => 0. /* allow option to provide a map of values */
