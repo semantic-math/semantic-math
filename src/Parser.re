@@ -1,7 +1,7 @@
 type operator =
   | Add
   | Sub
-  | Mul([`Explicit | `Implicit])
+  | Mul([ | `Explicit | `Implicit])
   | Div
   | Exp
   | Neg
@@ -113,8 +113,8 @@ let parse = tokens => {
       switch (Stack.pop(operatorStack)) {
       | Some((op, arity)) =>
         switch (op) {
-        | LeftParen => all ? raise(Unmatched_left_paren) : break := true;
-        | _ => 
+        | LeftParen => all ? raise(Unmatched_left_paren) : break := true
+        | _ =>
           let children = popOperands(arity);
           switch (op, children) {
           | (Func(_), [|Apply(Comma, args)|]) =>
@@ -125,7 +125,7 @@ let parse = tokens => {
           | _ => Stack.push(operandStack, Apply(op, children))
           };
         }
-      | None => all ? break := true : raise(Unmatched_right_paren);
+      | None => all ? break := true : raise(Unmatched_right_paren)
       };
     };
   };
@@ -172,13 +172,16 @@ let parse = tokens => {
     };
   /* Process each token. */
   tokens
-  |> Array.iteri((i, token) =>
+  |> Array.iteri((i, token) => {
+       let prevToken = i > 0 ? Some(tokens[i - 1]) : None;
+       let nextToken =
+         i < Array.length(tokens) - 1 ? Some(tokens[i + 1]) : None;
        switch (token) {
        | Lexer.IDENTIFIER(name) =>
          switch (String.length(name)) {
          | 0 => raise(Empty_identifier)
          | 1 =>
-           switch (i < Array.length(tokens) - 1 ? Some(tokens[i + 1]) : None) {
+           switch (nextToken) {
            | Some(Lexer.LEFT_PAREN) =>
              Stack.push(operatorStack, (Func(name), 1))
            | _ => Stack.push(operandStack, Identifier(name))
@@ -192,10 +195,16 @@ let parse = tokens => {
              Stack.push(operandStack, Identifier(letters[j]));
            };
          }
-       | Lexer.NUMBER(value) => Stack.push(operandStack, Number(value))
+       | Lexer.NUMBER(value) =>
+         Stack.push(operandStack, Number(value));
+         switch (nextToken) {
+         | Some(Lexer.IDENTIFIER(_)) =>
+           parseBinaryOp(~collate=true, Mul(`Implicit))
+         | _ => ()
+         };
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
        | Lexer.LEFT_PAREN =>
-         switch (i > 0 ? Some(tokens[i - 1]) : None) {
+         switch (prevToken) {
          | Some(Lexer.RIGHT_PAREN) =>
            /* handle implicit multiplication */
            switch (Stack.top(operatorStack)) {
@@ -213,8 +222,8 @@ let parse = tokens => {
        | Lexer.EQUAL => parseBinaryOp(~collate=true, Eq)
        | Lexer.COMMA => parseBinaryOp(~collate=true, Comma)
        | _ => raise(Unknown_error)
-       }
-     );
+       };
+     });
   /* Clean up any operators that are still on the operator stack. */
   popOperations(~all=true);
   /* Check if we have a single value left and return that value in that case. */
