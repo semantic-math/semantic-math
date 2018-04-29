@@ -151,10 +151,10 @@ let parse = tokens => {
     );
   /* Array.iter(token => Js.log(token), tokens); */
   /**
-   * op: Lexer.token - binary operator to parse
+   * op: Lexer.token - operator to parse
    * ~collate: boolean - combine multiple operators into n-ary operator
    */
-  let parseBinaryOp = (~collate=false, op) =>
+  let parseOp = (~collate=false, op) =>
     switch (Stack.top(operatorStack)) {
     | Some((topOp, arity)) when op == topOp && collate =>
       replaceTop(operatorStack, (op, arity + 1))
@@ -191,7 +191,7 @@ let parse = tokens => {
            let letters = Js.String.split("", name);
            Stack.push(operandStack, Identifier(letters[0]));
            for (j in 1 to Array.length(letters) - 1) {
-             parseBinaryOp(~collate=true, Mul(`Implicit));
+             parseOp(~collate=true, Mul(`Implicit));
              Stack.push(operandStack, Identifier(letters[j]));
            };
          }
@@ -199,28 +199,23 @@ let parse = tokens => {
          Stack.push(operandStack, Number(value));
          switch (nextToken) {
          | Some(Lexer.IDENTIFIER(_)) =>
-           parseBinaryOp(~collate=true, Mul(`Implicit))
+           parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
          };
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
        | Lexer.LEFT_PAREN =>
          switch (prevToken) {
          | Some(Lexer.RIGHT_PAREN) =>
-           /* handle implicit multiplication */
-           switch (Stack.top(operatorStack)) {
-           | Some((Mul(`Implicit), arity)) =>
-             replaceTop(operatorStack, (Mul(`Implicit), arity + 1))
-           | _ => Stack.push(operatorStack, (Mul(`Implicit), 2))
-           }
+           parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
          };
          Stack.push(operatorStack, (LeftParen, 0));
-       | Lexer.PLUS => parseBinaryOp(~collate=true, Add)
-       | Lexer.STAR => parseBinaryOp(~collate=true, Mul(`Explicit))
+       | Lexer.PLUS => parseOp(~collate=true, Add)
+       | Lexer.STAR => parseOp(~collate=true, Mul(`Explicit))
        | Lexer.MINUS => Stack.push(operatorStack, (Neg, 1))
-       | Lexer.CARET => parseBinaryOp(Exp)
-       | Lexer.EQUAL => parseBinaryOp(~collate=true, Eq)
-       | Lexer.COMMA => parseBinaryOp(~collate=true, Comma)
+       | Lexer.CARET => parseOp(Exp)
+       | Lexer.EQUAL => parseOp(~collate=true, Eq)
+       | Lexer.COMMA => parseOp(~collate=true, Comma)
        | _ => raise(Unknown_error)
        };
      });
