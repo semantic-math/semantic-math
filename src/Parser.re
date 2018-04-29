@@ -1,11 +1,7 @@
 type operator =
   | Add
   | Sub
-  /**
-   * Mul(true) is implicit multiplication
-   * Mul(false) is explicit multiplication
-   */
-  | Mul(bool)
+  | Mul(bool) /* Mul(true) == implicit, Mul(false) == explicit */
   | Div
   | Exp
   | Neg
@@ -13,12 +9,32 @@ type operator =
   | Eq
   | Gt
   | Lt
-  /**
+  | Func(string)
+  | /**
    * These aren't actually operators but they do appear temporarily in the
    * operandStack so we include them here to handle those situations.
    */
-  | LeftParen
-  | RightParen;
+    LeftParen
+  | RightParen
+  | Comma;
+
+let opToString = (op: operator) =>
+  switch (op) {
+  | Add => "+"
+  | Sub => "-"
+  | Mul(_) => "*"
+  | Div => "/"
+  | Neg => "neg"
+  | Pos => "pos"
+  | Exp => "^"
+  | Eq => "="
+  | LeftParen => "("
+  | RightParen => ")"
+  | Gt => ">"
+  | Lt => "<"
+  | Func(name) => name
+  | Comma => ","
+  };
 
 type node =
   | Apply(operator, array(node))
@@ -27,6 +43,7 @@ type node =
 
 let precedence = op =>
   switch (op) {
+  | Comma => (-1)
   | Eq
   | Lt
   | Gt => 0
@@ -40,6 +57,7 @@ let precedence = op =>
   | Neg
   | Pos => 5
   | Exp => 6
+  | Func(_) => 7
   };
 
 exception Missing_operator;
@@ -111,7 +129,8 @@ let parse = tokens => {
     switch (Stack.top(operatorStack)) {
     | Some((topOp, arity)) when op == topOp && collate =>
       replaceTop(operatorStack, (op, arity + 1))
-    | Some((topOp, arity)) when precedence(op) < precedence(topOp) =>
+    | Some((topOp, arity))
+        when topOp != LeftParen && precedence(op) < precedence(topOp) =>
       Stack.pop(operatorStack) |> ignore;
       Stack.push(operandStack, Apply(topOp, popOperands(arity)));
       /* case where the revealed operator matches the new operator */
@@ -124,13 +143,21 @@ let parse = tokens => {
     };
   /* Process each token. */
   tokens
-  |> Array.iteri((i, token) => {
-       let prevToken = i > 0 ? Some(tokens[i - 1]) : None;
+  |> Array.iteri((i, token) =>
        switch (token) {
        | Lexer.IDENTIFIER(name) =>
          switch (String.length(name)) {
          | 0 => raise(Empty_identifier)
-         | 1 => Stack.push(operandStack, Identifier(name))
+         | 1 =>
+           switch (i < Array.length(tokens) - 1 ? Some(tokens[i + 1]) : None) {
+           | Some(nextToken) =>
+             switch (nextToken) {
+             | Lexer.LEFT_PAREN =>
+               Stack.push(operatorStack, (Func(name), 1))
+             | _ => Stack.push(operandStack, Identifier(name))
+             }
+           | None => Stack.push(operandStack, Identifier(name))
+           }
          | _ =>
            /* turn multi-character identifiers into multiplication */
            let children =
@@ -146,21 +173,33 @@ let parse = tokens => {
              if (topOp == LeftParen) {
                break := true;
              } else {
-               Stack.push(operandStack, Apply(topOp, popOperands(arity)));
+               switch (topOp) {
+               | Func(_) =>
+                 let children = popOperands(arity);
+                 switch (children) {
+                 | [|Apply(Comma, args)|] =>
+                   Stack.push(operandStack, Apply(topOp, args)) /* multiple args */
+                 | _ => Stack.push(operandStack, Apply(topOp, children)) /* single arg */
+                 };
+               | _ =>
+                 Stack.push(operandStack, Apply(topOp, popOperands(arity)))
+               };
              }
            | None => raise(Unmatched_right_paren)
            };
          };
        | Lexer.LEFT_PAREN =>
-         switch (prevToken) {
-         | Some(prevOp) =>
-           if (prevOp == Lexer.RIGHT_PAREN) {
+         switch (i > 0 ? Some(tokens[i - 1]) : None) {
+         | Some(prevToken) =>
+           switch (prevToken) {
+           | Lexer.RIGHT_PAREN =>
              /* handle implicit multiplication */
              switch (Stack.top(operatorStack)) {
              | Some((topOp, arity)) when topOp == Mul(true) =>
                replaceTop(operatorStack, (Mul(true), arity + 1))
              | _ => Stack.push(operatorStack, (Mul(true), 2))
-             };
+             }
+           | _ => ()
            }
          | _ => ()
          };
@@ -170,9 +209,10 @@ let parse = tokens => {
        | Lexer.MINUS => Stack.push(operatorStack, (Neg, 1))
        | Lexer.CARET => parseBinaryOp(Exp)
        | Lexer.EQUAL => parseBinaryOp(~collate=true, Eq)
+       | Lexer.COMMA => parseBinaryOp(~collate=true, Comma)
        | _ => raise(Unknown_error)
-       };
-     });
+       }
+     );
   /* Clean up any operators that are still on the operator stack. */
   Stack.dynamicPopIter(
     operatorStack,
@@ -180,7 +220,17 @@ let parse = tokens => {
       if (op == LeftParen) {
         raise(Unmatched_left_paren);
       };
-      Stack.push(operandStack, Apply(op, popOperands(arity)));
+      switch (op) {
+      | Func(_) =>
+        let children = popOperands(arity);
+        switch (children) {
+        | [|Apply(Comma, args)|] =>
+          Stack.push(operandStack, Apply(op, args)) /* multiple args */
+        | _ => Stack.push(operandStack, Apply(op, children)) /* single arg */
+        };
+      | _ => Stack.push(operandStack, Apply(op, popOperands(arity)))
+      };
+      /* Stack.push(operandStack, Apply(op, popOperands(arity))); */
     },
   );
   /* Check if we have a single value left and return that value in that case. */
@@ -194,22 +244,6 @@ let parse = tokens => {
   | _ => raise(Missing_operator)
   };
 };
-
-let opToString = (op: operator) =>
-  switch (op) {
-  | Add => "+"
-  | Sub => "-"
-  | Mul(_) => "*"
-  | Div => "/"
-  | Neg => "neg"
-  | Pos => "pos"
-  | Exp => "^"
-  | Eq => "="
-  | LeftParen => "("
-  | RightParen => ")"
-  | Gt => ">"
-  | Lt => "<"
-  };
 
 let rec nodeToString = node =>
   switch (node) {

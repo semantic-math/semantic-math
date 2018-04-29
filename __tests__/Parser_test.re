@@ -60,4 +60,8 @@ describe("Parser", () => {
     testError("1 + 2 3", Parser.Missing_operator);
     testError("1 + 2 + +", Parser.Missing_operand);
   });
+  describe("function", () => {
+    testParser("f(x)", "[f x]");
+    testParser("f(x, y)", "[f x y]");
+  });
 });

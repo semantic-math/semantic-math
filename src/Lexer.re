@@ -9,6 +9,7 @@ type token =
   | LESS_THAN
   | LEFT_PAREN
   | RIGHT_PAREN
+  | COMMA
   | IDENTIFIER(string)
   | NUMBER(string);
 
@@ -24,6 +25,7 @@ let printToken = (token) =>
   | LESS_THAN => "<"
   | LEFT_PAREN => "("
   | RIGHT_PAREN => ")"
+  | COMMA => ","
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
   };
@@ -71,6 +73,7 @@ let lex = input : array(token) => {
            | "=" => Some(EQUAL)
            | "(" => Some(LEFT_PAREN)
            | ")" => Some(RIGHT_PAREN)
+           | "," => Some(COMMA)
            | _ => None
            }
          | [|_, _, _, Some(num)|] => Some(NUMBER(num))
