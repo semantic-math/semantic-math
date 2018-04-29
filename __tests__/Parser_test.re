@@ -33,6 +33,12 @@ describe("Parser", () => {
     testParser("x*y^2", "[* x [^ y 2]]");
     testParser("xy^2", "[* x [^ y 2]]");
   });
+  describe("division", () => {
+    testParser("1/2", "[/ 1 2]");
+    testParser("1/2/3", "[/ 1 [/ 2 3]]");
+    testParser("1/xy", "[/ 1 [* x y]]");
+    testParser("1/x^2", "[/ 1 [^ x 2]]");
+  });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
     testParser("(1+(2+(3+4)))", "[+ 1 [+ 2 [+ 3 4]]]");
@@ -71,5 +77,7 @@ describe("Parser", () => {
     testParser("f(x, y)", "[f x y]");
     testParser("f(g(x),y)", "[f [g x] y]");
     testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
+    testParser("sin(x)", "[sin x]");
+    testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
   });
 });

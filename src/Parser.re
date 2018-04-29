@@ -1,3 +1,4 @@
+/* TODO(kevinb): store the type signatures of operators for semantic analysis */
 type operator =
   | Add
   | Sub
@@ -60,6 +61,32 @@ let precedence = op =>
   | Func(_) => 7
   };
 
+let wellKnownIdentifiers = [
+  /* greek letters */
+  "alpha",
+  "beta",
+  "gamma",
+  "delta",
+  "epsilon",
+  "pi",
+  "tau",
+  "theta",
+  /* trig functions */
+  /* TODO(kevinb): store the type signature of functions for semantic analysis */
+  "sin",
+  "cos",
+  "tan",
+  "sec",
+  "csc",
+  "cot",
+  "asin",
+  "acos",
+  "atan",
+  "asec",
+  "acsc",
+  "acot",
+];
+
 exception Missing_operator;
 
 exception Missing_operand;
@@ -69,6 +96,8 @@ exception Unmatched_left_paren;
 exception Unmatched_right_paren;
 
 exception Unknown_error;
+
+exception Unknown_operator(string);
 
 exception Empty_identifier;
 
@@ -183,10 +212,11 @@ let parse = tokens => {
          | 1 =>
            switch (nextToken) {
            | Some(Lexer.LEFT_PAREN) =>
+             /* function */
              Stack.push(operatorStack, (Func(name), 1))
            | _ => Stack.push(operandStack, Identifier(name))
            }
-         | _ =>
+         | _ when ! List.mem(name, wellKnownIdentifiers) =>
            /* turn multi-character identifiers into multiplication */
            let letters = Js.String.split("", name);
            Stack.push(operandStack, Identifier(letters[0]));
@@ -194,6 +224,13 @@ let parse = tokens => {
              parseOp(~collate=true, Mul(`Implicit));
              Stack.push(operandStack, Identifier(letters[j]));
            };
+         | _ =>
+           switch (nextToken) {
+           | Some(Lexer.LEFT_PAREN) =>
+             /* function */
+             Stack.push(operatorStack, (Func(name), 1))
+           | _ => Stack.push(operandStack, Identifier(name))
+           }
          }
        | Lexer.NUMBER(value) =>
          Stack.push(operandStack, Number(value));
@@ -205,8 +242,7 @@ let parse = tokens => {
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
        | Lexer.LEFT_PAREN =>
          switch (prevToken) {
-         | Some(Lexer.RIGHT_PAREN) =>
-           parseOp(~collate=true, Mul(`Implicit))
+         | Some(Lexer.RIGHT_PAREN) => parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
          };
          Stack.push(operatorStack, (LeftParen, 0));
@@ -216,7 +252,8 @@ let parse = tokens => {
        | Lexer.CARET => parseOp(Exp)
        | Lexer.EQUAL => parseOp(~collate=true, Eq)
        | Lexer.COMMA => parseOp(~collate=true, Comma)
-       | _ => raise(Unknown_error)
+       | Lexer.SLASH => parseOp(Div)
+       | op => raise(Unknown_operator(Lexer.printToken(op)))
        };
      });
   /* Clean up any operators that are still on the operator stack. */
