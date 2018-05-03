@@ -1,5 +1,9 @@
 /* TODO(kevinb): store the type signatures of operators for semantic analysis */
-type operator =
+type node =
+  | Apply(operator, array(node))
+  | Identifier(string)
+  | Number(string)
+and operator =
   | Add
   | Sub
   | Mul([ | `Explicit | `Implicit])
@@ -10,7 +14,7 @@ type operator =
   | Eq
   | Gt
   | Lt
-  | Func(string)
+  | Func(node)
   | /**
    * These aren't actually operators but they do appear temporarily in the
    * operandStack so we include them here to handle those situations.
@@ -19,7 +23,22 @@ type operator =
   | RightParen
   | Comma;
 
-let opToString = (op: operator) =>
+let rec nodeToString = node =>
+  switch (node) {
+  | Apply(op, children) =>
+    "["
+    ++ Js.Array.joinWith(
+         " ",
+         Array.append(
+           [|opToString(op)|],
+           Array.map(nodeToString, children),
+         ),
+       )
+    ++ "]"
+  | Identifier(name) => name
+  | Number(value) => value
+  }
+and opToString = (op: operator) =>
   switch (op) {
   | Add => "+"
   | Sub => "-"
@@ -33,14 +52,9 @@ let opToString = (op: operator) =>
   | RightParen => ")"
   | Gt => ">"
   | Lt => "<"
-  | Func(name) => name
+  | Func(node) => nodeToString(node)
   | Comma => ","
   };
-
-type node =
-  | Apply(operator, array(node))
-  | Identifier(string)
-  | Number(string);
 
 let precedence = op =>
   switch (op) {
@@ -213,7 +227,7 @@ let parse = tokens => {
            switch (nextToken) {
            | Some(Lexer.LEFT_PAREN) =>
              /* function */
-             Stack.push(operatorStack, (Func(name), 1))
+             Stack.push(operatorStack, (Func(Identifier(name)), 1))
            | _ => Stack.push(operandStack, Identifier(name))
            }
          | _ when ! List.mem(name, wellKnownIdentifiers) =>
@@ -228,7 +242,7 @@ let parse = tokens => {
            switch (nextToken) {
            | Some(Lexer.LEFT_PAREN) =>
              /* function */
-             Stack.push(operatorStack, (Func(name), 1))
+             Stack.push(operatorStack, (Func(Identifier(name)), 1))
            | _ => Stack.push(operandStack, Identifier(name))
            }
          }
@@ -245,6 +259,7 @@ let parse = tokens => {
          | Some(Lexer.RIGHT_PAREN) => parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
          };
+         /* TODO(kevinb): post-process implicit multiplication to detect Funcs */
          Stack.push(operatorStack, (LeftParen, 0));
        | Lexer.PLUS => parseOp(~collate=true, Add)
        | Lexer.STAR => parseOp(~collate=true, Mul(`Explicit))
@@ -269,19 +284,3 @@ let parse = tokens => {
   | _ => raise(Missing_operator)
   };
 };
-
-let rec nodeToString = node =>
-  switch (node) {
-  | Apply(op, children) =>
-    "["
-    ++ Js.Array.joinWith(
-         " ",
-         Array.append(
-           [|opToString(op)|],
-           Array.map(nodeToString, children),
-         ),
-       )
-    ++ "]"
-  | Identifier(name) => name
-  | Number(value) => value
-  };

@@ -79,5 +79,6 @@ describe("Parser", () => {
     testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
     testParser("sin(x)", "[sin x]");
     testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
+    testParser("sin^2(x)", "");
   });
 });
