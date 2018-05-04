@@ -6,7 +6,7 @@ describe("Parser", () => {
     test(
       expr ++ " parses as " ++ tree,
       () => {
-        let tokens = Lexer.lex(expr);
+        let tokens = Lexer.lex(expr) |> Array.map(x => x.Lexer.t);
         let ast = Parser.parse(tokens);
         expect(Parser.nodeToString(ast)) |> toBe(tree);
       },
@@ -14,7 +14,7 @@ describe("Parser", () => {
   let testError = (expr, exc) =>
     test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
       expect(() =>
-        Parser.parse(Lexer.lex(expr))
+        Parser.parse(Lexer.lex(expr) |> Array.map(x => x.Lexer.t))
       ) |> toThrowException(exc)
     );
   describe("order of operations", () => {

@@ -268,7 +268,7 @@ let parse = tokens => {
        | Lexer.EQUAL => parseOp(~collate=true, Eq)
        | Lexer.COMMA => parseOp(~collate=true, Comma)
        | Lexer.SLASH => parseOp(Div)
-       | op => raise(Unknown_operator(Lexer.tokenToString(op)))
+       | op => raise(Unknown_operator(Lexer.tokenTypeToString(op)))
        };
      });
   /* Clean up any operators that are still on the operator stack. */
