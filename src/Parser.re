@@ -1,5 +1,5 @@
 /* TODO(kevinb): store the type signatures of operators for semantic analysis */
-type node =
+type node_desc =
   | Apply(operator, array(node))
   | Identifier(string)
   | Number(string)
@@ -21,10 +21,50 @@ and operator =
    */
     LeftParen
   | RightParen
-  | Comma;
+  | Comma
+and node = {
+  node_desc,
+  loc: Lexer.location,
+};
+
+exception NoOperands;
+
+let makeApply = (op: operator, children: array(node)) => {
+  let len = Array.length(children);
+  switch (children[0], children[len - 1]) {
+  | (first, last) => {
+      node_desc: Apply(op, children),
+      loc: {
+        Lexer.start: first.loc.Lexer.start,
+        Lexer.end_: last.loc.Lexer.end_,
+      },
+    }
+  | exception _ => raise(NoOperands)
+  };
+};
+
+let makeNumber = (token: Lexer.token) => {
+  /* TODO(kevinb): verify that it's a number token */
+  node_desc: Number(token.Lexer.value),
+  loc: token.Lexer.loc,
+};
+
+let makeIdentifier = (token: Lexer.token) => {
+  /* TODO(kevinb): verify that it's an identifier token */
+  node_desc: Identifier(token.Lexer.value),
+  loc: token.Lexer.loc,
+};
+
+let makeNewIdentifier = (id: string, start: int, end_: int) => {
+  node_desc: Identifier(id),
+  loc: {
+    Lexer.start,
+    Lexer.end_,
+  },
+};
 
 let rec nodeToString = node =>
-  switch (node) {
+  switch (node.node_desc) {
   | Apply(op, children) =>
     "["
     ++ Js.Array.joinWith(
@@ -160,12 +200,12 @@ let parse = (tokens: array(Lexer.token)) => {
         | _ =>
           let children = popOperands(arity);
           switch (op, children) {
-          | (Func(_), [|Apply(Comma, args)|]) =>
+          | (Func(_), [|{node_desc: Apply(Comma, args), loc: _}|]) =>
             /**
              * Transform Func nodes as follows: [f [, x y]] => [f x y]
              */
-            Stack.push(operandStack, Apply(op, args)) /* multiple args */
-          | _ => Stack.push(operandStack, Apply(op, children))
+            Stack.push(operandStack, makeApply(op, args)) /* multiple args */
+          | _ => Stack.push(operandStack, makeApply(op, children))
           };
         }
       | None => all ? break := true : raise(Unmatched_right_paren)
@@ -180,25 +220,35 @@ let parse = (tokens: array(Lexer.token)) => {
         | Lexer.MINUS =>
           switch (last(accum)) {
           | Some(prevToken)
-              when prevToken.Lexer.t != Lexer.MINUS && prevToken.Lexer.t != Lexer.LEFT_PAREN =>
-            Js.Array.push({
+              when
+                prevToken.Lexer.t != Lexer.MINUS
+                && prevToken.Lexer.t != Lexer.LEFT_PAREN =>
+            Js.Array.push(
+              {
               Lexer.t: Lexer.PLUS,
               Lexer.value: "+",
               Lexer.loc: {
-                Lexer.start: -1,
-                Lexer.end_: -1,
+                  Lexer.start: (-1),
+                  Lexer.end_: (-1),
+                },
               },
-            }, accum) |> ignore
+              accum,
+            )
+            |> ignore
           | _ => ()
           };
-          Js.Array.push({
+          Js.Array.push(
+            {
             Lexer.t: Lexer.MINUS,
             Lexer.value: "-",
             Lexer.loc: {
-              Lexer.start: -1,
-              Lexer.end_: -1,
+                Lexer.start: (-1),
+                Lexer.end_: (-1),
+              },
             },
-          }, accum) |> ignore;
+            accum,
+          )
+          |> ignore;
         | _ => Js.Array.push(token, accum) |> ignore
         };
         accum;
@@ -218,7 +268,8 @@ let parse = (tokens: array(Lexer.token)) => {
     | Some((topOp, arity))
         when topOp != LeftParen && precedence(op) < precedence(topOp) =>
       Stack.pop(operatorStack) |> ignore;
-      Stack.push(operandStack, Apply(topOp, popOperands(arity)));
+      let children = popOperands(arity);
+      Stack.push(operandStack, makeApply(topOp, children));
       /* case where the revealed operator matches the new operator */
       switch (Stack.top(operatorStack)) {
       | Some((topOp, arity)) when topOp == op =>
@@ -241,27 +292,41 @@ let parse = (tokens: array(Lexer.token)) => {
            switch (nextToken) {
            | Some({Lexer.t: Lexer.LEFT_PAREN}) =>
              /* function */
-             Stack.push(operatorStack, (Func(Identifier(name)), 1))
-           | _ => Stack.push(operandStack, Identifier(name))
+             Stack.push(operatorStack, (Func(makeIdentifier(token)), 1))
+           | _ => Stack.push(operandStack, makeIdentifier(token))
            }
          | _ when ! List.mem(name, wellKnownIdentifiers) =>
            /* turn multi-character identifiers into multiplication */
            let letters = Js.String.split("", name);
-           Stack.push(operandStack, Identifier(letters[0]));
+           Stack.push(
+             operandStack,
+             makeNewIdentifier(
+               letters[0],
+               token.Lexer.loc.Lexer.start,
+               token.Lexer.loc.Lexer.start + 1,
+             ),
+           );
            for (j in 1 to Array.length(letters) - 1) {
              parseOp(~collate=true, Mul(`Implicit));
-             Stack.push(operandStack, Identifier(letters[j]));
+             Stack.push(
+               operandStack,
+               makeNewIdentifier(
+                 letters[j],
+                 token.Lexer.loc.Lexer.start + j,
+                 token.Lexer.loc.Lexer.start + j + 1,
+               ),
+             );
            };
          | _ =>
            switch (nextToken) {
            | Some({Lexer.t: Lexer.LEFT_PAREN}) =>
              /* function */
-             Stack.push(operatorStack, (Func(Identifier(name)), 1))
-           | _ => Stack.push(operandStack, Identifier(name))
+             Stack.push(operatorStack, (Func(makeIdentifier(token)), 1))
+           | _ => Stack.push(operandStack, makeIdentifier(token))
            }
          }
-       | Lexer.NUMBER(value) =>
-         Stack.push(operandStack, Number(value));
+       | Lexer.NUMBER(_) =>
+         Stack.push(operandStack, makeNumber(token));
          switch (nextToken) {
          | Some({Lexer.t: Lexer.IDENTIFIER(_)}) =>
            parseOp(~collate=true, Mul(`Implicit))
@@ -270,7 +335,8 @@ let parse = (tokens: array(Lexer.token)) => {
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
        | Lexer.LEFT_PAREN =>
          switch (prevToken) {
-         | Some({Lexer.t: Lexer.RIGHT_PAREN}) => parseOp(~collate=true, Mul(`Implicit))
+         | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
+           parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
          };
          /* TODO(kevinb): post-process implicit multiplication to detect Funcs */

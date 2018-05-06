@@ -4,7 +4,7 @@ let prod = Array.fold_left(( *. ), 1.);
 let rec evaluate =
   Parser.(
     node =>
-      switch (node) {
+      switch (node.node_desc) {
       | Apply(op, children) =>
         let children = Array.map(evaluate, children);
         switch (op) {
