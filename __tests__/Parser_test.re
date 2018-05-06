@@ -7,14 +7,14 @@ describe("Parser", () => {
       expr ++ " parses as " ++ tree,
       () => {
         let tokens = Lexer.lex(expr);
-        let ast = Parser.parse(tokens);
+        let ast = Parser.parse(tokens, expr);
         expect(Parser.nodeToString(ast)) |> toBe(tree);
       },
     );
   let testError = (expr, exc) =>
     test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
       expect(() =>
-        Parser.parse(Lexer.lex(expr))
+        Parser.parse(Lexer.lex(expr), expr)
       ) |> toThrowException(exc)
     );
   describe("order of operations", () => {
@@ -79,6 +79,7 @@ describe("Parser", () => {
     testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
     testParser("sin(x)", "[sin x]");
     testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
-    testParser("sin^2(x)", "");
+    testParser("sin^2(x)", "[[^ sin 2] x]");
+    /* testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]"); */
   });
 });
