@@ -1,12 +1,12 @@
-let sum = Array.fold_left((+.), 0.);
-let prod = Array.fold_left(( *. ), 1.);
+let sum = List.fold_left((+.), 0.);
+let prod = List.fold_left(( *. ), 1.);
 
 let rec evaluate =
   Parser.(
     node =>
       switch (node.node_desc) {
       | Apply(op, children) =>
-        let children = Array.map(evaluate, children);
+        let children = List.map(evaluate, children);
         switch (op) {
         | Add => children |> sum
         | Mul(_) => children |> prod

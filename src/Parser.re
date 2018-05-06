@@ -1,6 +1,6 @@
 /* TODO(kevinb): store the type signatures of operators for semantic analysis */
 type node_desc =
-  | Apply(operator, array(node))
+  | Apply(operator, list(node))
   | Identifier(string)
   | Number(string)
 and operator =
@@ -29,9 +29,9 @@ and node = {
 
 exception NoOperands;
 
-let makeApply = (op: operator, children: array(node)) => {
-  let len = Array.length(children);
-  switch (children[0], children[len - 1]) {
+let makeApply = (op: operator, children: list(node)) => {
+  let len = List.length(children);
+  switch (List.hd(children), List.nth(children, len - 1)) {
   | (first, last) => {
       node_desc: Apply(op, children),
       loc: {
@@ -69,10 +69,10 @@ let rec nodeToString = node =>
     "["
     ++ Js.Array.joinWith(
          " ",
-         Array.append(
-           [|opToString(op)|],
-           Array.map(nodeToString, children),
-         ),
+         Array.of_list([
+           opToString(op),
+           ...List.map(nodeToString, children),
+         ]),
        )
     ++ "]"
   | Identifier(name) => name
@@ -168,21 +168,36 @@ let last = arr =>
 
 module Stack = Belt.MutableStack;
 
+let rec traverse = (visitor, node) =>
+  switch (node.node_desc) {
+  | Apply(_, children) =>
+    List.iter(traverse(visitor), children);
+    visitor(node);
+  | _ => visitor(node)
+  };
+
+let rec transform = (visitor: node => node, node): node =>
+  switch (node.node_desc) {
+  | Apply(op, children) =>
+    let newChildren = List.map(transform(visitor), children);
+    visitor(makeApply(op, newChildren));
+  | _ => 
+    visitor(node);
+  };
+
 /* return a node */
 let parse = (tokens: array(Lexer.token)) => {
   let operatorStack = Stack.make();
   let operandStack: Stack.t(node) = Stack.make();
-  let popOperands = arity : array(node) => {
-    let children = [||];
-    for (_ in 1 to arity) {
+  let rec popOperands = arity : list(node) => {
+    if (arity == 0) {
+      [];
+    } else {
       switch (Belt.MutableStack.pop(operandStack)) {
-      | Some(value) => Js.Array.push(value, children) |> ignore
+      | Some(value) => [value, ...popOperands(arity - 1)]
       | None => raise(Missing_operand)
       };
-    };
-    /* reverse the children so they're in the right order */
-    Js.Array.reverseInPlace(children) |> ignore;
-    children;
+    }
   };
   /**
    * Pop all operations or until the first left parenthesis is encountered.String
@@ -198,9 +213,9 @@ let parse = (tokens: array(Lexer.token)) => {
         switch (op) {
         | LeftParen => all ? raise(Unmatched_left_paren) : break := true
         | _ =>
-          let children = popOperands(arity);
+          let children = List.rev(popOperands(arity));
           switch (op, children) {
-          | (Func(_), [|{node_desc: Apply(Comma, args), loc: _}|]) =>
+          | (Func(_), [{node_desc: Apply(Comma, args), loc: _}]) =>
             /**
              * Transform Func nodes as follows: [f [, x y]] => [f x y]
              */
@@ -212,52 +227,7 @@ let parse = (tokens: array(Lexer.token)) => {
       };
     };
   };
-  /* replace `a - b` with `a + neg b` */
-  let tokens: array(Lexer.token) =
-    Array.fold_left(
-      (accum, token) => {
-        switch (token.Lexer.t) {
-        | Lexer.MINUS =>
-          switch (last(accum)) {
-          | Some(prevToken)
-              when
-                prevToken.Lexer.t != Lexer.MINUS
-                && prevToken.Lexer.t != Lexer.LEFT_PAREN =>
-            Js.Array.push(
-              {
-              Lexer.t: Lexer.PLUS,
-              Lexer.value: "+",
-              Lexer.loc: {
-                  Lexer.start: (-1),
-                  Lexer.end_: (-1),
-                },
-              },
-              accum,
-            )
-            |> ignore
-          | _ => ()
-          };
-          Js.Array.push(
-            {
-            Lexer.t: Lexer.MINUS,
-            Lexer.value: "-",
-            Lexer.loc: {
-                Lexer.start: (-1),
-                Lexer.end_: (-1),
-              },
-            },
-            accum,
-          )
-          |> ignore;
-        | _ => Js.Array.push(token, accum) |> ignore
-        };
-        accum;
-      },
-      [||],
-      tokens,
-    );
-  /* Array.iter(token => Js.log(token), tokens); */
-  /**
+ /**
    * op: Lexer.token - operator to parse
    * ~collate: boolean - combine multiple operators into n-ary operator
    */
@@ -268,7 +238,7 @@ let parse = (tokens: array(Lexer.token)) => {
     | Some((topOp, arity))
         when topOp != LeftParen && precedence(op) < precedence(topOp) =>
       Stack.pop(operatorStack) |> ignore;
-      let children = popOperands(arity);
+      let children = List.rev(popOperands(arity));
       Stack.push(operandStack, makeApply(topOp, children));
       /* case where the revealed operator matches the new operator */
       switch (Stack.top(operatorStack)) {
@@ -288,13 +258,7 @@ let parse = (tokens: array(Lexer.token)) => {
        | Lexer.IDENTIFIER(name) =>
          switch (String.length(name)) {
          | 0 => raise(Empty_identifier)
-         | 1 =>
-           switch (nextToken) {
-           | Some({Lexer.t: Lexer.LEFT_PAREN}) =>
-             /* function */
-             Stack.push(operatorStack, (Func(makeIdentifier(token)), 1))
-           | _ => Stack.push(operandStack, makeIdentifier(token))
-           }
+         | 1 => Stack.push(operandStack, makeIdentifier(token))
          | _ when ! List.mem(name, wellKnownIdentifiers) =>
            /* turn multi-character identifiers into multiplication */
            let letters = Js.String.split("", name);
@@ -317,13 +281,7 @@ let parse = (tokens: array(Lexer.token)) => {
                ),
              );
            };
-         | _ =>
-           switch (nextToken) {
-           | Some({Lexer.t: Lexer.LEFT_PAREN}) =>
-             /* function */
-             Stack.push(operatorStack, (Func(makeIdentifier(token)), 1))
-           | _ => Stack.push(operandStack, makeIdentifier(token))
-           }
+         | _ => Stack.push(operandStack, makeIdentifier(token))
          }
        | Lexer.NUMBER(_) =>
          Stack.push(operandStack, makeNumber(token));
@@ -333,8 +291,10 @@ let parse = (tokens: array(Lexer.token)) => {
          | _ => ()
          };
        | Lexer.RIGHT_PAREN => popOperations(~all=false)
-       | Lexer.LEFT_PAREN =>
+       | Lexer.LEFT_PAREN => 
          switch (prevToken) {
+         | Some({Lexer.t: Lexer.IDENTIFIER(_)}) 
+         | Some({Lexer.t: Lexer.NUMBER(_)})
          | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
            parseOp(~collate=true, Mul(`Implicit))
          | _ => ()
@@ -343,7 +303,20 @@ let parse = (tokens: array(Lexer.token)) => {
          Stack.push(operatorStack, (LeftParen, 0));
        | Lexer.PLUS => parseOp(~collate=true, Add)
        | Lexer.STAR => parseOp(~collate=true, Mul(`Explicit))
-       | Lexer.MINUS => Stack.push(operatorStack, (Neg, 1))
+       | Lexer.MINUS => {
+         /**
+          * If we see a minus after a number, identifier, or right parenthesis
+          * we know that it's actually subtraction.  We treat subtraction as 
+          * adding the negative.
+          */
+         switch (prevToken) {
+         | Some({Lexer.t: Lexer.NUMBER(_)})
+         | Some({Lexer.t: Lexer.IDENTIFIER(_)})
+         | Some({Lexer.t: Lexer.RIGHT_PAREN}) => parseOp(~collate=true, Add)
+         | _ => ()
+         }; 
+         Stack.push(operatorStack, (Neg, 1));
+       }
        | Lexer.CARET => parseOp(Exp)
        | Lexer.EQUAL => parseOp(~collate=true, Eq)
        | Lexer.COMMA => parseOp(~collate=true, Comma)
