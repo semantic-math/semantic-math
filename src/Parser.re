@@ -233,7 +233,7 @@ let parse = (tokens: array(Lexer.token), str: string) => {
             | _ => ()
             };
             break := true;
-          }
+          };
         | _ =>
           let children = List.rev(popOperands(arity));
           Stack.push(operandStack, makeApply(op, children));
@@ -246,7 +246,7 @@ let parse = (tokens: array(Lexer.token), str: string) => {
    * op: Lexer.token - operator to parse
    * ~collate: boolean - combine multiple operators into n-ary operator
    */
-  let parseOp = (~collate=false, op, loc) =>
+  let rec parseOp = (~collate=false, op, loc) =>
     switch (Stack.top(operatorStack)) {
     | Some((topOp, arity, loc)) when op == topOp && collate =>
       replaceTop(operatorStack, (op, arity + 1, loc))
@@ -256,11 +256,9 @@ let parse = (tokens: array(Lexer.token), str: string) => {
       let children = List.rev(popOperands(arity));
       Stack.push(operandStack, makeApply(topOp, children));
       /* case where the revealed operator matches the new operator */
-      switch (Stack.top(operatorStack)) {
-      | Some((topOp, arity, loc)) when topOp == op =>
-        replaceTop(operatorStack, (op, arity + 1, loc))
-      | _ => Stack.push(operatorStack, (op, 2, loc))
-      };
+      /* we recurse he b/c there may be multiple operators increasing precedence
+         that can be reveal */
+      parseOp(~collate=collate, op, loc);
     | _ => Stack.push(operatorStack, (op, 2, loc))
     };
   /* Process each token. */

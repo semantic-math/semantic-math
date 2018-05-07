@@ -61,6 +61,7 @@ describe("Parser", () => {
     testParser("2^3^4", "[^ 2 [^ 3 4]]");
     testParser("-2^x", "[neg [^ 2 x]]");
     testParser("(-2)^x", "[^ [neg 2] x]");
+    testParser("a^-2b^-3", "[* [^ a [neg 2]] [^ b [neg 3]]]");
   });
   describe("equations", () => {
     testParser("x + 5 = 10", "[= [+ x 5] 10]");
@@ -80,6 +81,6 @@ describe("Parser", () => {
     testParser("sin(x)", "[sin x]");
     testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
     testParser("sin^2(x)", "[[^ sin 2] x]");
-    /* testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]"); */
+    testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]");
   });
 });
