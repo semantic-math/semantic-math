@@ -67,6 +67,18 @@ describe("Parser", () => {
     testParser("x + 5 = 10", "[= [+ x 5] 10]");
     testParser("x = y = z", "[= x y z]");
   });
+  describe("inequalities", () => {
+    testParser("x < y", "[< x y]");
+    testParser("x < y < z", "[< x y z]");
+    testParser("x <= y", "[<= x y]");
+    testParser("x <= y <= z", "[<= x y z]");
+    testParser("x > y", "[> x y]");
+    testParser("x > y > z", "[> x y z]");
+    testParser("x >= y", "[>= x y]");
+    testParser("x >= y >= z", "[>= x y z]");
+    /* What should this case parse as */
+    /* testParser("a > b < c", ""); */
+  });
   describe("errors", () => {
     testError("(x+1", Parser.Unmatched_left_paren);
     testError("x+1)", Parser.Unmatched_right_paren);

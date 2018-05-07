@@ -13,14 +13,12 @@ and operator =
   | Pos
   | Eq
   | Gt
+  | Gte
   | Lt
+  | Lte
   | Func(node)
-  | /**
-   * These aren't actually operators but they do appear temporarily in the
-   * operandStack so we include them here to handle those situations.
-   */
-    LeftParen
-  | RightParen
+  | LeftParen /* not a real operator */
+  | RightParen /* not a real operator */
   | Comma
 and node = {
   node_desc,
@@ -63,6 +61,14 @@ let makeNewIdentifier = (id: string, start: int, end_: int) => {
   },
 };
 
+let updateLoc = (node: node, start: int, end_: int) => {
+  node_desc: node.node_desc,
+  loc: {
+    Lexer.start,
+    Lexer.end_,
+  },
+};
+
 let rec nodeToString = node =>
   switch (node.node_desc) {
   | Apply(op, children) =>
@@ -91,7 +97,9 @@ and opToString = (op: operator) =>
   | LeftParen => "("
   | RightParen => ")"
   | Gt => ">"
+  | Gte => ">="
   | Lt => "<"
+  | Lte => "<="
   | Func(node) => nodeToString(node)
   | Comma => ","
   };
@@ -101,7 +109,9 @@ let precedence = op =>
   | Comma => (-1)
   | Eq
   | Lt
-  | Gt => 0
+  | Lte
+  | Gt
+  | Gte => 0
   | LeftParen
   | RightParen => 1
   | Add
@@ -114,32 +124,6 @@ let precedence = op =>
   | Exp => 6
   | Func(_) => 7
   };
-
-let wellKnownIdentifiers = [
-  /* greek letters */
-  "alpha",
-  "beta",
-  "gamma",
-  "delta",
-  "epsilon",
-  "pi",
-  "tau",
-  "theta",
-  /* trig functions */
-  /* TODO(kevinb): store the type signature of functions for semantic analysis */
-  "sin",
-  "cos",
-  "tan",
-  "sec",
-  "csc",
-  "cot",
-  "asin",
-  "acos",
-  "atan",
-  "asec",
-  "acsc",
-  "acot",
-];
 
 exception Missing_operator;
 
@@ -165,6 +149,9 @@ let last = arr =>
   | 0 => None
   | n => Some(arr[n - 1])
   };
+
+let substrForLoc = (str, loc) =>
+  Js.String.slice(~from=loc.Lexer.start, ~to_=loc.Lexer.end_, str);
 
 module Stack = Belt.MutableStack;
 
@@ -212,28 +199,19 @@ let parse = (tokens: array(Lexer.token), str: string) => {
     while (! break^) {
       switch (Stack.pop(operatorStack)) {
       | Some((op, arity, otherLoc)) =>
-        switch (op) {
-        | LeftParen =>
-          if (all) {
-            raise(Unmatched_left_paren);
-          } else {
-            switch (Stack.top(operandStack)) {
-            | Some(top) =>
-              /* Update the top operand to include the parens in the loc */
-              replaceTop(
-                operandStack,
-                {
-                  node_desc: top.node_desc,
-                  loc: {
-                    Lexer.start: otherLoc.Lexer.start,
-                    Lexer.end_: loc.Lexer.end_,
-                  },
-                },
-              )
-            | _ => ()
-            };
-            break := true;
+        switch (op, all) {
+        | (LeftParen, true) => raise(Unmatched_left_paren)
+        | (LeftParen, false) =>
+          switch (Stack.top(operandStack)) {
+          | Some(top) =>
+            /* Update the top operand to include the parens in the loc */
+            replaceTop(
+              operandStack,
+              updateLoc(top, otherLoc.Lexer.start, loc.Lexer.end_),
+            )
+          | _ => ()
           };
+          break := true;
         | _ =>
           let children = List.rev(popOperands(arity));
           Stack.push(operandStack, makeApply(op, children));
@@ -258,7 +236,7 @@ let parse = (tokens: array(Lexer.token), str: string) => {
       /* case where the revealed operator matches the new operator */
       /* we recurse he b/c there may be multiple operators increasing precedence
          that can be reveal */
-      parseOp(~collate=collate, op, loc);
+      parseOp(~collate, op, loc);
     | _ => Stack.push(operatorStack, (op, 2, loc))
     };
   /* Process each token. */
@@ -272,19 +250,18 @@ let parse = (tokens: array(Lexer.token), str: string) => {
          switch (String.length(name)) {
          | 0 => raise(Empty_identifier)
          | 1 => Stack.push(operandStack, makeIdentifier(token))
-         | _ when ! List.mem(name, wellKnownIdentifiers) =>
+         | _ when ! List.mem(name, Data.wellKnownIdentifiers) =>
            /* turn multi-character identifiers into multiplication */
            let letters = Js.String.split("", name);
-           Stack.push(
-             operandStack,
-             makeNewIdentifier(
-               letters[0],
-               token.Lexer.loc.Lexer.start,
-               token.Lexer.loc.Lexer.start + 1,
-             ),
-           );
-           for (j in 1 to Array.length(letters) - 1) {
-             parseOp(~collate=true, Mul(`Implicit), token.loc);
+           for (j in 0 to Array.length(letters) - 1) {
+             if (j > 0) {
+               /* TODO: update location to be in between letters */
+               parseOp(
+                 ~collate=true,
+                 Mul(`Implicit),
+                 token.loc,
+               );
+             };
              Stack.push(
                operandStack,
                makeNewIdentifier(
@@ -336,6 +313,10 @@ let parse = (tokens: array(Lexer.token), str: string) => {
        | Lexer.EQUAL => parseOp(~collate=true, Eq, token.loc)
        | Lexer.COMMA => parseOp(~collate=true, Comma, token.loc)
        | Lexer.SLASH => parseOp(Div, token.loc)
+       | Lexer.LESS_THAN => parseOp(~collate=true, Lt, token.loc)
+       | Lexer.LESS_THAN_OR_EQUAL => parseOp(~collate=true, Lte, token.loc)
+       | Lexer.GREATER_THAN => parseOp(~collate=true, Gt, token.loc)
+       | Lexer.GREATER_THAN_OR_EQUAL => parseOp(~collate=true, Gte, token.loc)
        | op => raise(Unknown_operator(Lexer.tokenTypeToString(op)))
        };
      });
@@ -350,7 +331,9 @@ let parse = (tokens: array(Lexer.token), str: string) => {
       | Some(value) => value
       | None => raise(Unknown_error) /* should never happen b/c we checked the size already */
       }
-    | _ => raise(Missing_operator)
+    | _ =>
+      Stack.forEach(operatorStack, Js.log);
+      raise(Missing_operator);
     };
   /* Js.log(nodeToString(result)); */
   /**
@@ -363,40 +346,34 @@ let parse = (tokens: array(Lexer.token), str: string) => {
       | Apply(Mul(`Implicit), children) =>
         if (List.length(children) == 2) {
           let first = List.nth(children, 0);
-          let firstSubstr =
-            Js.String.slice(
-              ~from=first.loc.Lexer.start,
-              ~to_=first.loc.Lexer.end_,
-              str,
-            );
+          let firstSubstr = substrForLoc(str, first.loc);
           let last = List.nth(children, 1);
-          let lastSubstr =
-            Js.String.slice(
-              ~from=last.loc.Lexer.start,
-              ~to_=last.loc.Lexer.end_,
-              str,
-            );
-          if (Js.String.startsWith("(", lastSubstr)
-              && ! Js.String.endsWith(")", firstSubstr)) {
-            switch (last.node_desc) {
-            | Apply(Comma, args) => {
+          let lastSubstr = substrForLoc(str, last.loc);
+          /**
+           * TOOD(kevinb): eventually we'll want to handle expressions like
+           * (f + g)(x), but this depends on semanitc knowledge of what f and g
+           * are.  For instance (x)(y) may parse as multiplication, but (f+g)(x)
+           * may parse as a function
+           */
+          (
+            if (Js.String.startsWith("(", lastSubstr)
+                && ! Js.String.endsWith(")", firstSubstr)) {
+              let args =
+                switch (last.node_desc) {
+                | Apply(Comma, args) => args
+                | _ => [last]
+                };
+              {
                 node_desc: Apply(Func(first), args),
                 loc: {
                   Lexer.start: first.loc.Lexer.start,
                   Lexer.end_: last.loc.Lexer.end_,
                 },
-              }
-            | _ => {
-                node_desc: Apply(Func(first), [last]),
-                loc: {
-                  Lexer.start: first.loc.Lexer.start,
-                  Lexer.end_: last.loc.Lexer.end_,
-                },
-              }
-            };
-          } else {
-            node;
-          };
+              };
+            } else {
+              node;
+            }
+          );
         } else {
           node;
         }

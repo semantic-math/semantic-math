@@ -1,7 +1,6 @@
 Js.log("re-math-parser demo");
 
-/* let str = "sin^-1 (x)"; */
-let str = "a^-2b";
+let str = "a > b < c";
 let tokens = Lexer.lex(str);
 tokens |> Array.map(Lexer.tokenToString) |> Array.iter(Js.log);
 

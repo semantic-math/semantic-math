@@ -6,7 +6,9 @@ type token_type =
   | CARET
   | EQUAL
   | GREATER_THAN
+  | GREATER_THAN_OR_EQUAL
   | LESS_THAN
+  | LESS_THAN_OR_EQUAL
   | LEFT_PAREN
   | RIGHT_PAREN
   | COMMA
@@ -33,7 +35,9 @@ let tokenTypeToString = tokenType =>
   | CARET => "^"
   | EQUAL => "="
   | GREATER_THAN => ">"
+  | GREATER_THAN_OR_EQUAL => ">="
   | LESS_THAN => "<"
+  | LESS_THAN_OR_EQUAL => "<="
   | LEFT_PAREN => "("
   | RIGHT_PAREN => ")"
   | COMMA => ","
@@ -100,6 +104,10 @@ let groupsToTokenType = groups =>
     | "(" => Some(LEFT_PAREN)
     | ")" => Some(RIGHT_PAREN)
     | "," => Some(COMMA)
+    | "<" => Some(LESS_THAN)
+    | ">" => Some(GREATER_THAN)
+    | "<=" => Some(LESS_THAN_OR_EQUAL)
+    | ">=" => Some(GREATER_THAN_OR_EQUAL)
     | _ => None
     }
   | _ => None
