@@ -1,130 +1,3 @@
-/* TODO(kevinb): store the type signatures of operators for semantic analysis */
-type node_desc =
-  | Apply(operator, list(node))
-  | Identifier(string)
-  | Number(string)
-and operator =
-  | Add
-  | Sub
-  | Mul([ | `Explicit | `Implicit])
-  | Div
-  | Exp
-  | Neg
-  | Pos
-  | Eq
-  | Gt
-  | Gte
-  | Lt
-  | Lte
-  | Func(node)
-  | LeftParen /* not a real operator */
-  | RightParen /* not a real operator */
-  | Comma
-and node = {
-  node_desc,
-  loc: Lexer.location,
-};
-
-exception NoOperands;
-
-let makeApply = (op: operator, children: list(node)) => {
-  let len = List.length(children);
-  switch (List.hd(children), List.nth(children, len - 1)) {
-  | (first, last) => {
-      node_desc: Apply(op, children),
-      loc: {
-        Lexer.start: first.loc.Lexer.start,
-        Lexer.end_: last.loc.Lexer.end_,
-      },
-    }
-  | exception _ => raise(NoOperands)
-  };
-};
-
-let makeNumber = (token: Lexer.token) => {
-  /* TODO(kevinb): verify that it's a number token */
-  node_desc: Number(token.Lexer.value),
-  loc: token.Lexer.loc,
-};
-
-let makeIdentifier = (token: Lexer.token) => {
-  /* TODO(kevinb): verify that it's an identifier token */
-  node_desc: Identifier(token.Lexer.value),
-  loc: token.Lexer.loc,
-};
-
-let makeNewIdentifier = (id: string, start: int, end_: int) => {
-  node_desc: Identifier(id),
-  loc: {
-    Lexer.start,
-    Lexer.end_,
-  },
-};
-
-let updateLoc = (node: node, start: int, end_: int) => {
-  node_desc: node.node_desc,
-  loc: {
-    Lexer.start,
-    Lexer.end_,
-  },
-};
-
-let rec nodeToString = node =>
-  switch (node.node_desc) {
-  | Apply(op, children) =>
-    "["
-    ++ Js.Array.joinWith(
-         " ",
-         Array.of_list([
-           opToString(op),
-           ...List.map(nodeToString, children),
-         ]),
-       )
-    ++ "]"
-  | Identifier(name) => name
-  | Number(value) => value
-  }
-and opToString = (op: operator) =>
-  switch (op) {
-  | Add => "+"
-  | Sub => "-"
-  | Mul(_) => "*"
-  | Div => "/"
-  | Neg => "neg"
-  | Pos => "pos"
-  | Exp => "^"
-  | Eq => "="
-  | LeftParen => "("
-  | RightParen => ")"
-  | Gt => ">"
-  | Gte => ">="
-  | Lt => "<"
-  | Lte => "<="
-  | Func(node) => nodeToString(node)
-  | Comma => ","
-  };
-
-let precedence = op =>
-  switch (op) {
-  | Comma => (-1)
-  | Eq
-  | Lt
-  | Lte
-  | Gt
-  | Gte => 0
-  | LeftParen
-  | RightParen => 1
-  | Add
-  | Sub => 2
-  | Mul(`Explicit) => 3
-  | Mul(`Implicit)
-  | Div => 4
-  | Neg
-  | Pos => 5
-  | Exp => 6
-  | Func(_) => 7
-  };
-
 exception Missing_operator;
 
 exception Missing_operand;
@@ -144,39 +17,14 @@ let replaceTop = (stack, value) => {
   Belt.MutableStack.push(stack, value);
 };
 
-let last = arr =>
-  switch (Array.length(arr)) {
-  | 0 => None
-  | n => Some(arr[n - 1])
-  };
-
 let substrForLoc = (str, loc) =>
   Js.String.slice(~from=loc.Lexer.start, ~to_=loc.Lexer.end_, str);
 
 module Stack = Belt.MutableStack;
 
-let rec traverse = (visitor, node) =>
-  switch (node.node_desc) {
-  | Apply(_, children) =>
-    List.iter(traverse(visitor), children);
-    visitor(node);
-  | _ => visitor(node)
-  };
-
-let rec transform = (visitor: node => node, node) : node =>
-  switch (node.node_desc) {
-  | Apply(op, children) =>
-    let newChildren = List.map(transform(visitor), children);
-    let apply = makeApply(op, newChildren);
-    visitor({
-      node_desc: apply.node_desc,
-      loc: node.loc /* maintain the location of the node */
-    });
-  | _ => visitor(node)
-  };
-
 /* return a node */
-let parse = (tokens: array(Lexer.token), str: string) => {
+let parse = (tokens, str) => {
+  open Node;
   let operatorStack: Stack.t((operator, int, Lexer.location)) = Stack.make();
   let operandStack: Stack.t(node) = Stack.make();
   let rec popOperands = arity : list(node) =>
@@ -239,87 +87,93 @@ let parse = (tokens: array(Lexer.token), str: string) => {
       parseOp(~collate, op, loc);
     | _ => Stack.push(operatorStack, (op, 2, loc))
     };
+  let splitIdentifier = (token: Lexer.token, name) => {
+    let letters = Js.String.split("", name);
+    for (j in 0 to Array.length(letters) - 1) {
+      if (j > 0) {
+        /* TODO: update location to be in between letters */
+        parseOp(
+          ~collate=true,
+          Mul(`Implicit),
+          token.loc,
+        );
+      };
+      Stack.push(
+        operandStack,
+        makeNewIdentifier(
+          letters[j],
+          token.Lexer.loc.Lexer.start + j,
+          token.Lexer.loc.Lexer.start + j + 1,
+        ),
+      );
+    };
+  };
+  /* Process a single token */
+  let processToken = (token, prevToken, nextToken) =>
+    switch (token.Lexer.t) {
+    | Lexer.IDENTIFIER(name) =>
+      switch (String.length(name)) {
+      | 0 => raise(Empty_identifier)
+      | 1 => Stack.push(operandStack, makeIdentifier(token))
+      | _ when List.mem(name, Data.wellKnownIdentifiers) =>
+        Stack.push(operandStack, makeIdentifier(token))
+      | _ => splitIdentifier(token, name)
+      }
+    | Lexer.NUMBER(_) =>
+      Stack.push(operandStack, makeNumber(token));
+      switch (nextToken) {
+      | Some({Lexer.t: Lexer.IDENTIFIER(_)}) =>
+        parseOp(~collate=true, Mul(`Implicit), token.loc)
+      | _ => ()
+      };
+    | Lexer.RIGHT_PAREN => popOperations(~all=false, ~loc=token.loc)
+    | Lexer.LEFT_PAREN =>
+      switch (prevToken) {
+      | Some({Lexer.t: Lexer.IDENTIFIER(_)})
+      | Some({Lexer.t: Lexer.NUMBER(_)})
+      | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
+        parseOp(~collate=true, Mul(`Implicit), token.loc)
+      | _ => ()
+      };
+      /* TODO(kevinb): post-process implicit multiplication to detect Funcs */
+      Stack.push(operatorStack, (LeftParen, 0, token.loc));
+    | Lexer.PLUS => parseOp(~collate=true, Add, token.loc)
+    | Lexer.STAR => parseOp(~collate=true, Mul(`Explicit), token.loc)
+    | Lexer.MINUS =>
+      /**
+       * If we see a minus after a number, identifier, or right parenthesis
+       * we know that it's actually subtraction.  We treat subtraction as
+       * adding the negative.
+       */
+      (
+        switch (prevToken) {
+        | Some({Lexer.t: Lexer.NUMBER(_)})
+        | Some({Lexer.t: Lexer.IDENTIFIER(_)})
+        | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
+          parseOp(~collate=true, Add, token.loc)
+        | _ => ()
+        }
+      );
+      Stack.push(operatorStack, (Neg, 1, token.loc));
+    | Lexer.CARET => parseOp(Exp, token.loc)
+    | Lexer.EQUAL => parseOp(~collate=true, Eq, token.loc)
+    | Lexer.COMMA => parseOp(~collate=true, Comma, token.loc)
+    | Lexer.SLASH => parseOp(Div, token.loc)
+    | Lexer.LESS_THAN => parseOp(~collate=true, Lt, token.loc)
+    | Lexer.LESS_THAN_OR_EQUAL => parseOp(~collate=true, Lte, token.loc)
+    | Lexer.GREATER_THAN => parseOp(~collate=true, Gt, token.loc)
+    | Lexer.GREATER_THAN_OR_EQUAL => parseOp(~collate=true, Gte, token.loc)
+    };
   /* Process each token. */
-  tokens
-  |> Array.iteri((i, token) => {
-       let prevToken = i > 0 ? Some(tokens[i - 1]) : None;
-       let nextToken =
-         i < Array.length(tokens) - 1 ? Some(tokens[i + 1]) : None;
-       switch (token.Lexer.t) {
-       | Lexer.IDENTIFIER(name) =>
-         switch (String.length(name)) {
-         | 0 => raise(Empty_identifier)
-         | 1 => Stack.push(operandStack, makeIdentifier(token))
-         | _ when ! List.mem(name, Data.wellKnownIdentifiers) =>
-           /* turn multi-character identifiers into multiplication */
-           let letters = Js.String.split("", name);
-           for (j in 0 to Array.length(letters) - 1) {
-             if (j > 0) {
-               /* TODO: update location to be in between letters */
-               parseOp(
-                 ~collate=true,
-                 Mul(`Implicit),
-                 token.loc,
-               );
-             };
-             Stack.push(
-               operandStack,
-               makeNewIdentifier(
-                 letters[j],
-                 token.Lexer.loc.Lexer.start + j,
-                 token.Lexer.loc.Lexer.start + j + 1,
-               ),
-             );
-           };
-         | _ => Stack.push(operandStack, makeIdentifier(token))
-         }
-       | Lexer.NUMBER(_) =>
-         Stack.push(operandStack, makeNumber(token));
-         switch (nextToken) {
-         | Some({Lexer.t: Lexer.IDENTIFIER(_)}) =>
-           parseOp(~collate=true, Mul(`Implicit), token.loc)
-         | _ => ()
-         };
-       | Lexer.RIGHT_PAREN => popOperations(~all=false, ~loc=token.loc)
-       | Lexer.LEFT_PAREN =>
-         switch (prevToken) {
-         | Some({Lexer.t: Lexer.IDENTIFIER(_)})
-         | Some({Lexer.t: Lexer.NUMBER(_)})
-         | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
-           parseOp(~collate=true, Mul(`Implicit), token.loc)
-         | _ => ()
-         };
-         /* TODO(kevinb): post-process implicit multiplication to detect Funcs */
-         Stack.push(operatorStack, (LeftParen, 0, token.loc));
-       | Lexer.PLUS => parseOp(~collate=true, Add, token.loc)
-       | Lexer.STAR => parseOp(~collate=true, Mul(`Explicit), token.loc)
-       | Lexer.MINUS =>
-         /**
-          * If we see a minus after a number, identifier, or right parenthesis
-          * we know that it's actually subtraction.  We treat subtraction as
-          * adding the negative.
-          */
-         (
-           switch (prevToken) {
-           | Some({Lexer.t: Lexer.NUMBER(_)})
-           | Some({Lexer.t: Lexer.IDENTIFIER(_)})
-           | Some({Lexer.t: Lexer.RIGHT_PAREN}) =>
-             parseOp(~collate=true, Add, token.loc)
-           | _ => ()
-           }
-         );
-         Stack.push(operatorStack, (Neg, 1, token.loc));
-       | Lexer.CARET => parseOp(Exp, token.loc)
-       | Lexer.EQUAL => parseOp(~collate=true, Eq, token.loc)
-       | Lexer.COMMA => parseOp(~collate=true, Comma, token.loc)
-       | Lexer.SLASH => parseOp(Div, token.loc)
-       | Lexer.LESS_THAN => parseOp(~collate=true, Lt, token.loc)
-       | Lexer.LESS_THAN_OR_EQUAL => parseOp(~collate=true, Lte, token.loc)
-       | Lexer.GREATER_THAN => parseOp(~collate=true, Gt, token.loc)
-       | Lexer.GREATER_THAN_OR_EQUAL => parseOp(~collate=true, Gte, token.loc)
-       | op => raise(Unknown_operator(Lexer.tokenTypeToString(op)))
-       };
-     });
+  Array.iteri(
+    (i, token) => {
+      let prevToken = i > 0 ? Some(tokens[i - 1]) : None;
+      let nextToken =
+        i < Array.length(tokens) - 1 ? Some(tokens[i + 1]) : None;
+      processToken(token, prevToken, nextToken);
+    },
+    tokens,
+  );
   /* Clean up any operators that are still on the operator stack. */
   popOperations(~all=true, ~loc={Lexer.start: (-1), Lexer.end_: (-1)});
   /* Check if we have a single value left and return that value in that case. */
@@ -340,7 +194,7 @@ let parse = (tokens: array(Lexer.token), str: string) => {
    * TOOD(kevinb): add transform here to convert implicit multiplication to
    * a Func call
    */
-  transform(
+  Transform.transform(
     node =>
       switch (node.node_desc) {
       | Apply(Mul(`Implicit), children) =>

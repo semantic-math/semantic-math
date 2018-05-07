@@ -5,7 +5,7 @@ let tokens = Lexer.lex(str);
 tokens |> Array.map(Lexer.tokenToString) |> Array.iter(Js.log);
 
 let ast = Parser.parse(tokens, str);
-Js.log(Parser.nodeToString(ast));
+Js.log(Node.nodeToString(ast));
 
 let result = Evaluate.evaluate(ast);
 Js.log(result);
