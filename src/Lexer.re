@@ -13,7 +13,8 @@ type token_type =
   | RIGHT_PAREN
   | COMMA
   | IDENTIFIER(string)
-  | NUMBER(string);
+  | NUMBER(string)
+  | EOF;
 
 type location = {
   start: int,
@@ -43,6 +44,7 @@ let tokenTypeToString = tokenType =>
   | COMMA => ","
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
+  | EOF => "EOF"
   };
 
 let tokenToString = token =>

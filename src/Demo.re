@@ -1,6 +1,6 @@
 Js.log("re-math-parser demo");
 
-let str = "-a+b+c";
+let str = "-a+-+b++c";
 
 let tokens = Lexer.lex(str);
 
@@ -25,7 +25,19 @@ type node =
   | Identifier(string)
   | Number(string);
 
-let peek = () => tokens[0];
+let peek = () =>
+  Lexer.(
+    try (tokens[0]) {
+    | Invalid_argument("index out of bounds") => {
+        t: EOF,
+        value: "",
+        loc: {
+          start: (-1),
+          end_: (-1),
+        },
+      }
+    }
+  );
 
 let consume = () => Js.Array.shift(tokens);
 
@@ -45,7 +57,6 @@ let rec getPrefixParselet = token =>
   Lexer.(
     switch (token.t) {
     | IDENTIFIER(name) =>
-      Js.log("parsing identifier: " ++ name);
       Some({parse: () => Identifier(name), precedence: 0});
     | MINUS =>
       Some({parse: () => Apply(Neg, [parse(100)]), precedence: 100})
@@ -67,15 +78,32 @@ and getInfixParselet = token =>
 and parse = (precedence: int) =>
   switch (consume()) {
   | Some(token) =>
-    Js.log("parse just conumsed " ++ Lexer.tokenToString(token));
     let left =
       switch (getPrefixParselet(token)) {
       | Some(parselet) => parselet.parse()
       | None => raise(Error)
       };
-    parseInfix(precedence, left);
+    switch (parseInfixNary(precedence, peek())) {
+    | [] => left
+    | otherArgs => Apply(Add, [left] @ otherArgs)
+    };
   | None => raise(Error)
   }
+and parseInfixNary = (precedence, token) : list(node) =>
+  Lexer.(
+    if (precedence < getPrecedence()) {
+      /* since it's the right precedence we can consume the operator token */
+      consume() |> ignore;
+      let result = parse(5);  /* TODO: look up the precedence of the token */
+      if (token.t == peek().t) {
+        [result] @ parseInfixNary(precedence, token);
+      } else {
+        [result];
+      }
+    } else {
+      [];
+    }
+  )
 and parseInfix = (precedence, left) : node =>
   if (precedence < getPrecedence()) {
     switch (consume()) {
