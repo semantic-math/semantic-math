@@ -74,8 +74,8 @@ let rec getPrefixParselet = token =>
   Lexer.(
     switch (token.t) {
     | IDENTIFIER(name) => Some((() => Identifier(name)))
-    | MINUS => Some((() => Apply(Neg, [parse(100)])))
-    | PLUS => Some((() => Apply(Pos, [parse(100)])))
+    | MINUS => Some(parsePrefix(Neg))
+    | PLUS => Some(parsePrefix(Pos))
     | _ => None
     }
   )
@@ -103,6 +103,7 @@ and parse = (precedence: int) =>
     };
   | None => raise(Error)
   }
+and parsePrefix = (op, ()) => Apply(Neg, [parse(getOpPrecedence(op))])
 and parseNaryInfix = (op, precedence, left) =>
   switch (parseNaryArgs(op, precedence, peek())) {
   | [] => left
