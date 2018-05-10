@@ -1,6 +1,7 @@
 Js.log("re-math-parser demo");
 
 let str = "a + b * c * d + e ^ -f ^ g";
+
 /* let str = "a ^ b ^ c"; */
 let tokens = Lexer.lex(str);
 
@@ -24,6 +25,16 @@ let opToString = op =>
   | Exp => "exp"
   };
 
+let getOpPrecedence = op =>
+  switch (op) {
+  | Add => 10
+  | Mul => 20
+  | Div => 20
+  | Exp => 30
+  | Pos => 100
+  | Neg => 100
+  };
+
 type node =
   | Apply(operator, list(node))
   | Identifier(string)
@@ -43,66 +54,38 @@ let peek = () =>
     }
   );
 
+let getPrecedence = () =>
+  Lexer.(
+    /* This is only necessary for handle infix operators */
+    switch (peek().t) {
+    | PLUS => 10
+    | STAR => 20
+    | SLASH => 20
+    | CARET => 30
+    | _ => 0
+    }
+  );
+
 let consume = () => Js.Array.shift(tokens);
 
 exception Error;
 
-type prefix_parselet = {
-  parsePrefix: unit => node,
-  precedence: int,
-};
-
-type infix_parselet = {
-  parseBinary: node => node,
-  precedence: int,
-};
-
-type nary_infix_parselet = {
-  parseNary: (int, Lexer.token) => list(node),
-  operator,
-};
-
 let rec getPrefixParselet = token =>
   Lexer.(
     switch (token.t) {
-    | IDENTIFIER(name) =>
-      Some({parsePrefix: () => Identifier(name), precedence: 0})
-    | MINUS =>
-      Some({parsePrefix: () => Apply(Neg, [parse(100)]), precedence: 100})
-    | PLUS =>
-      Some({parsePrefix: () => Apply(Pos, [parse(100)]), precedence: 100})
+    | IDENTIFIER(name) => Some((() => Identifier(name)))
+    | MINUS => Some((() => Apply(Neg, [parse(100)])))
+    | PLUS => Some((() => Apply(Pos, [parse(100)])))
     | _ => None
     }
   )
-and getInfixNaryParselet = token =>
+and getInfixParselet = token =>
   Lexer.(
     switch (token.t) {
-    | PLUS =>
-      Some({
-        parseNary: parseInfixNary(10), /* precedence = 10 */
-        operator: Add,
-      })
-    | STAR =>
-      Some({
-        parseNary: parseInfixNary(20), /* precedence = 20 */
-        operator: Mul,
-      })
-    | _ => None
-    }
-  )
-and getInfixBinaryParselet = token =>
-  Lexer.(
-    switch (token.t) {
-    | SLASH =>
-      Some({
-        parseBinary: left => Apply(Div, [left, parse(20)]),
-        precedence: 20,
-      })
-    | CARET =>
-      Some({
-        parseBinary: left => Apply(Exp, [left, parse(30)]),
-        precedence: 30,
-      })
+    | PLUS => Some(parseNaryInfix(Add))
+    | STAR => Some(parseNaryInfix(Mul))
+    | SLASH => Some(parseBinaryInfix(Div))
+    | CARET => Some(parseBinaryInfix(Exp))
     | _ => None
     }
   )
@@ -111,64 +94,49 @@ and parse = (precedence: int) =>
   | Some(token) =>
     let left =
       switch (getPrefixParselet(token)) {
-      | Some(parselet) => parselet.parsePrefix()
+      | Some(parselet) => parselet()
       | None => raise(Error)
       };
-    /* parse n-ary infix operators */
-    switch (getInfixNaryParselet(peek())) {
-    | Some(parselet) =>
-      /* TODO: encapsulate this with in the parselet */
-      switch (parselet.parseNary(precedence, peek())) {
-      | [] => left
-      | otherArgs => Apply(parselet.operator, [left] @ otherArgs)
-      }
-    | None => parseBinaryInfix(precedence, left)
+    switch (getInfixParselet(peek())) {
+    | Some(parselet) => parselet(precedence, left)
+    | None => left
     };
   | None => raise(Error)
   }
-/* TODO: rename to parseNaryArgs */
-and parseInfixNary = (opPrecendence, precedence, token) : list(node) =>
+and parseNaryInfix = (op, precedence, left) =>
+  switch (parseNaryArgs(op, precedence, peek())) {
+  | [] => left
+  | otherArgs => Apply(op, [left] @ otherArgs)
+  }
+and parseNaryArgs = (op, precedence, token) : list(node) =>
   Lexer.(
     if (precedence < getPrecedence()) {
-      /* since it's the right precedence we can consume the operator token */
+      /* TODO: verify that the token is the same */
       consume() |> ignore;
-      let result = parse(opPrecendence);
+      let result = parse(getOpPrecedence(op));
       token.t == peek().t ?
-        [result] @ parseInfixNary(opPrecendence, precedence, token) :
-        [result];
+        [result] @ parseNaryArgs(op, precedence, token) : [result];
     } else {
       [];
     }
   )
-and parseBinaryInfix = (precedence, left) : node =>
+and parseBinaryInfix = (op, precedence, left) : node =>
   if (precedence < getPrecedence()) {
     switch (consume()) {
     | Some(token) =>
-      switch (getInfixBinaryParselet(token)) {
+      switch (getInfixParselet(token)) {
       | Some(parselet) =>
-        parseBinaryInfix(precedence, parselet.parseBinary(left))
+        parselet(
+          precedence,
+          Apply(op, [left, parse(getOpPrecedence(op))]),
+        )
       | None => raise(Error)
       }
     | None => left
     };
   } else {
     left;
-  }
-and getPrecedence = () : int =>
-  Lexer.(
-    /* This is only necessary for handle infix operators */
-    try (
-      switch (peek().t) {
-      | PLUS => 10
-      | STAR => 20
-      | SLASH => 20
-      | CARET => 30
-      | _ => 0
-      }
-    ) {
-    | Invalid_argument("index out of bounds") => 0
-    }
-  );
+  };
 
 let result = parse(0);
 
