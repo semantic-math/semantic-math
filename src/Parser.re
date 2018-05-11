@@ -33,18 +33,21 @@ type node =
 
 exception Error;
 
+let makeToken = (t, value) =>
+  Lexer.{
+    t,
+    value,
+    loc: {
+      start: (-1),
+      end_: (-1),
+    },
+  };
+
 let parse = (tokens, src: string) => {
   let peek = () =>
     Lexer.(
       try (tokens[0]) {
-      | Invalid_argument("index out of bounds") => {
-          t: EOF,
-          value: "",
-          loc: {
-            start: (-1),
-            end_: (-1),
-          },
-        }
+      | Invalid_argument("index out of bounds") => makeToken(EOF, "")
       }
     );
   let getPrecedence = () =>
@@ -54,6 +57,7 @@ let parse = (tokens, src: string) => {
       | PLUS => 10
       | MINUS => 10
       | STAR => 20
+      | SPACE => 25 /* used for implicit multiplication */
       | SLASH => 20
       | CARET => 30
       | _ => 0
@@ -63,30 +67,59 @@ let parse = (tokens, src: string) => {
     Lexer.(
       switch (Js.Array.shift(tokens)) {
       | Some(token) => token
-      | None => {
-          t: EOF,
-          value: "",
-          loc: {
-            start: (-1),
-            end_: (-1),
-          },
-        }
+      | None => makeToken(EOF, "")
       }
     );
   let rec getPrefixParselet = token =>
     Lexer.(
       switch (token.t) {
-      | IDENTIFIER(name) => Some((() => Identifier(name)))
+      | IDENTIFIER(name) =>
+        Some(
+          (
+            () =>
+              if (String.length(name) > 1) {
+                let letters = Js.String.split("", name);
+                Array.iteri(
+                  (i, letter) => {
+                    if (i > 0) {
+                      Js.Array.unshift(makeToken(SPACE, " "), tokens)
+                      |> ignore;
+                    };
+                    Js.Array.unshift(
+                      makeToken(IDENTIFIER(letter), letter),
+                      tokens,
+                    )
+                    |> ignore;
+                  },
+                  Js.Array.reverseInPlace(letters),
+                );
+                switch (consume().t) {
+                | IDENTIFIER(letter) =>
+                  parseNaryInfix(Mul, 0, Identifier(letter))
+                | _ =>
+                  Js.log("before error");
+                  raise(Error);
+                };
+              } else {
+                Identifier(name);
+              }
+          ),
+        )
       | NUMBER(value) => Some((() => Number(value)))
       | MINUS => Some(parsePrefix(Neg))
       | PLUS => Some(parsePrefix(Pos))
-      | LEFT_PAREN => Some(() => {
-        let expr = parseExpression(0);
-        switch (consume().t) {
-        | RIGHT_PAREN => expr
-        | _ => raise(Error)
-        }
-      })
+      | LEFT_PAREN =>
+        Some(
+          (
+            () => {
+              let expr = parseExpression(0);
+              switch (consume().t) {
+              | RIGHT_PAREN => expr
+              | _ => raise(Error)
+              };
+            }
+          ),
+        )
       | _ => None
       }
     )
@@ -112,7 +145,8 @@ let parse = (tokens, src: string) => {
     | None => left
     };
   }
-  and parsePrefix = (op, ()) => Apply(Neg, [parseExpression(getOpPrecedence(op))])
+  and parsePrefix = (op, ()) =>
+    Apply(Neg, [parseExpression(getOpPrecedence(op))])
   and parseNaryInfix = (op, precedence, left) =>
     switch (parseNaryArgs(op, precedence, peek())) {
     | [] => left

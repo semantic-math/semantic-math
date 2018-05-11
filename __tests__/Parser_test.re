@@ -21,7 +21,7 @@ describe("Parser", () => {
     testParser("1+2+3", "[+ 1 2 3]");
     testParser("1+2*3+4*5+6", "[+ 1 [* 2 3] [* 4 5] 6]");
   });
-  Skip.describe("multiplication", () => {
+  describe("multiplication", () => {
     testParser("abc", "[* a b c]");
     testParser("abcd", "[* a b c d]");
     testParser("ab * cd", "[* [* a b] [* c d]]");

@@ -2,6 +2,7 @@ type token_type =
   | PLUS
   | MINUS
   | STAR
+  | SPACE
   | SLASH
   | CARET
   | EQUAL
@@ -32,6 +33,7 @@ let tokenTypeToString = tokenType =>
   | PLUS => "+"
   | MINUS => "-"
   | STAR => "*"
+  | SPACE => " " /* used for implicit multiplication */
   | SLASH => "/"
   | CARET => "^"
   | EQUAL => "="
