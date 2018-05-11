@@ -80,6 +80,13 @@ let parse = (tokens, src: string) => {
       | NUMBER(value) => Some((() => Number(value)))
       | MINUS => Some(parsePrefix(Neg))
       | PLUS => Some(parsePrefix(Pos))
+      | LEFT_PAREN => Some(() => {
+        let expr = parseExpression(0);
+        switch (consume().t) {
+        | RIGHT_PAREN => expr
+        | _ => raise(Error)
+        }
+      })
       | _ => None
       }
     )
@@ -94,7 +101,7 @@ let parse = (tokens, src: string) => {
       | _ => None
       }
     )
-  and _parse = (precedence: int) => {
+  and parseExpression = (precedence: int) => {
     let left =
       switch (getPrefixParselet(consume())) {
       | Some(parselet) => parselet()
@@ -105,7 +112,7 @@ let parse = (tokens, src: string) => {
     | None => left
     };
   }
-  and parsePrefix = (op, ()) => Apply(Neg, [_parse(getOpPrecedence(op))])
+  and parsePrefix = (op, ()) => Apply(Neg, [parseExpression(getOpPrecedence(op))])
   and parseNaryInfix = (op, precedence, left) =>
     switch (parseNaryArgs(op, precedence, peek())) {
     | [] => left
@@ -115,7 +122,7 @@ let parse = (tokens, src: string) => {
     Lexer.(
       if (precedence < getPrecedence()) {
         consume() |> ignore;
-        let result = _parse(getOpPrecedence(op));
+        let result = parseExpression(getOpPrecedence(op));
         switch (token.t, peek().t) {
         | (PLUS, PLUS | MINUS) =>
           [result] @ parseNaryArgs(op, precedence, peek())
@@ -136,14 +143,14 @@ let parse = (tokens, src: string) => {
       | Some(parselet) =>
         parselet(
           precedence,
-          Apply(op, [left, _parse(getOpPrecedence(op))]),
+          Apply(op, [left, parseExpression(getOpPrecedence(op))]),
         )
       | None => raise(Error)
       };
     } else {
       left;
     };
-  _parse(0);
+  parseExpression(0);
 };
 
 let rec nodeToString = node =>

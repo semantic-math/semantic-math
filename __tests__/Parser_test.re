@@ -56,6 +56,7 @@ describe("Parser", () => {
     testParser("1 - (2 * 3)", "[+ 1 [neg [* 2 3]]]");
     testParser("-(2 * 3)", "[neg [* 2 3]]");
     testParser("-2 * 3", "[* [neg 2] 3]");
+    testParser("(2 * 3) - 4", "[+ [* 2 3] [neg 4]]");
   });
   describe("exponents", () => {
     testParser("2^3", "[^ 2 3]");
