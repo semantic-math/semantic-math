@@ -52,6 +52,7 @@ let parse = (tokens, src: string) => {
       /* This is only necessary for handle infix operators */
       switch (peek().t) {
       | PLUS => 10
+      | MINUS => 10
       | STAR => 20
       | SLASH => 20
       | CARET => 30
@@ -75,8 +76,8 @@ let parse = (tokens, src: string) => {
   let rec getPrefixParselet = token =>
     Lexer.(
       switch (token.t) {
-      | IDENTIFIER(name) => Some(() => Identifier(name))
-      | NUMBER(value) => Some(() => Number(value))
+      | IDENTIFIER(name) => Some((() => Identifier(name)))
+      | NUMBER(value) => Some((() => Number(value)))
       | MINUS => Some(parsePrefix(Neg))
       | PLUS => Some(parsePrefix(Pos))
       | _ => None
@@ -86,6 +87,7 @@ let parse = (tokens, src: string) => {
     Lexer.(
       switch (token.t) {
       | PLUS => Some(parseNaryInfix(Add))
+      | MINUS => Some(parseNaryInfix(Add))
       | STAR => Some(parseNaryInfix(Mul))
       | SLASH => Some(parseBinaryInfix(Div))
       | CARET => Some(parseBinaryInfix(Exp))
@@ -114,8 +116,16 @@ let parse = (tokens, src: string) => {
       if (precedence < getPrecedence()) {
         consume() |> ignore;
         let result = _parse(getOpPrecedence(op));
-        token.t == peek().t ?
-          [result] @ parseNaryArgs(op, precedence, token) : [result];
+        switch (token.t, peek().t) {
+        | (PLUS, PLUS | MINUS) =>
+          [result] @ parseNaryArgs(op, precedence, peek())
+        | (MINUS, PLUS | MINUS) =>
+          [Apply(Neg, [result])] @ parseNaryArgs(op, precedence, peek())
+        | (a, b) when a == b =>
+          [result] @ parseNaryArgs(op, precedence, peek())
+        | (MINUS, _) => [Apply(Neg, [result])]
+        | (_, _) => [result]
+        };
       } else {
         [];
       }

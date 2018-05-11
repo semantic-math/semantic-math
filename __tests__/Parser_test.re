@@ -47,8 +47,9 @@ describe("Parser", () => {
     testParser("(2)", "2");
     testParser("(-2)", "[neg 2]");
   });
-  Skip.describe("subtraction/negation", () => {
+  describe("subtraction/negation", () => {
     testParser("1-2", "[+ 1 [neg 2]]");
+    testParser("1-2+3", "[+ 1 [neg 2] 3]");
     testParser("1--2", "[+ 1 [neg [neg 2]]]");
     testParser("-1", "[neg 1]");
     testParser("--1", "[neg [neg 1]]");
