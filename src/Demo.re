@@ -66,7 +66,20 @@ let getPrecedence = () =>
     }
   );
 
-let consume = () => Js.Array.shift(tokens);
+let consume = () =>
+  Lexer.(
+    switch (Js.Array.shift(tokens)) {
+    | Some(token) => token
+    | None => {
+        t: EOF,
+        value: "",
+        loc: {
+          start: (-1),
+          end_: (-1),
+        },
+      }
+    }
+  );
 
 exception Error;
 
@@ -89,20 +102,17 @@ and getInfixParselet = token =>
     | _ => None
     }
   )
-and parse = (precedence: int) =>
-  switch (consume()) {
-  | Some(token) =>
-    let left =
-      switch (getPrefixParselet(token)) {
-      | Some(parselet) => parselet()
-      | None => raise(Error)
-      };
-    switch (getInfixParselet(peek())) {
-    | Some(parselet) => parselet(precedence, left)
-    | None => left
+and parse = (precedence: int) => {
+  let left =
+    switch (getPrefixParselet(consume())) {
+    | Some(parselet) => parselet()
+    | None => raise(Error)
     };
-  | None => raise(Error)
-  }
+  switch (getInfixParselet(peek())) {
+  | Some(parselet) => parselet(precedence, left)
+  | None => left
+  };
+}
 and parsePrefix = (op, ()) => Apply(Neg, [parse(getOpPrecedence(op))])
 and parseNaryInfix = (op, precedence, left) =>
   switch (parseNaryArgs(op, precedence, peek())) {
@@ -112,7 +122,6 @@ and parseNaryInfix = (op, precedence, left) =>
 and parseNaryArgs = (op, precedence, token) : list(node) =>
   Lexer.(
     if (precedence < getPrecedence()) {
-      /* TODO: verify that the token is the same */
       consume() |> ignore;
       let result = parse(getOpPrecedence(op));
       token.t == peek().t ?
@@ -123,17 +132,10 @@ and parseNaryArgs = (op, precedence, token) : list(node) =>
   )
 and parseBinaryInfix = (op, precedence, left) : node =>
   if (precedence < getPrecedence()) {
-    switch (consume()) {
-    | Some(token) =>
-      switch (getInfixParselet(token)) {
-      | Some(parselet) =>
-        parselet(
-          precedence,
-          Apply(op, [left, parse(getOpPrecedence(op))]),
-        )
-      | None => raise(Error)
-      }
-    | None => left
+    switch (getInfixParselet(consume())) {
+    | Some(parselet) =>
+      parselet(precedence, Apply(op, [left, parse(getOpPrecedence(op))]))
+    | None => raise(Error)
     };
   } else {
     left;
