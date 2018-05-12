@@ -39,7 +39,7 @@ describe("Parser", () => {
     testParser("1/xy", "[/ 1 [* x y]]");
     testParser("1/x^2", "[/ 1 [^ x 2]]");
   });
-  Skip.describe("parentheses", () => {
+  describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
     testParser("(1+(2+(3+4)))", "[+ 1 [+ 2 [+ 3 4]]]");
     testParser("(3+4)", "[+ 3 4]");

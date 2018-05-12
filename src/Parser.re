@@ -1,6 +1,6 @@
 type operator =
   | Add
-  | Mul
+  | Mul([ | `Explicit | `Implicit])
   | Neg
   | Pos
   | Div
@@ -9,7 +9,7 @@ type operator =
 let opToString = op =>
   switch (op) {
   | Add => "+"
-  | Mul => "*"
+  | Mul(_) => "*"
   | Neg => "neg"
   | Pos => "pos"
   | Div => "/"
@@ -19,8 +19,9 @@ let opToString = op =>
 let getOpPrecedence = op =>
   switch (op) {
   | Add => 10
-  | Mul => 20
   | Div => 20
+  | Mul(`Explicit) => 20
+  | Mul(`Implicit) => 25
   | Exp => 30
   | Pos => 25
   | Neg => 25
@@ -43,6 +44,22 @@ let makeToken = (t, value) =>
     },
   };
 
+let rec nodeToString = node =>
+  switch (node) {
+  | Apply(op, children) =>
+    "["
+    ++ Js.Array.joinWith(
+         " ",
+         Array.of_list([
+           opToString(op),
+           ...List.map(nodeToString, children),
+         ]),
+       )
+    ++ "]"
+  | Identifier(name) => name
+  | Number(value) => value
+  };
+
 let parse = (tokens, src: string) => {
   let peek = () =>
     Lexer.(
@@ -57,9 +74,9 @@ let parse = (tokens, src: string) => {
       | PLUS => 10
       | MINUS => 10
       | STAR => 20
-      | IDENTIFIER(_) => 25
-      | SPACE => 25 /* used for implicit multiplication */
       | SLASH => 20
+      | IDENTIFIER(_) => 25 /* used for implicit multiplication */
+      | LEFT_PAREN => 25 /* used for implicit multiplication */
       | CARET => 30
       | _ => 0
       }
@@ -71,7 +88,7 @@ let parse = (tokens, src: string) => {
       | None => makeToken(EOF, "")
       }
     );
-  let splitIdentifier = name => {
+  let splitIdentifier = name =>
     Array.iter(
       letter =>
         /* TODO: provide correct location info for letter tokens */
@@ -79,7 +96,6 @@ let parse = (tokens, src: string) => {
         |> ignore,
       Js.Array.reverseInPlace(Js.String.split("", name)),
     );
-  };
   let rec getPrefixParselet = token =>
     Lexer.(
       switch (token.t) {
@@ -91,7 +107,7 @@ let parse = (tokens, src: string) => {
                 splitIdentifier(name);
                 switch (consume().t) {
                 | IDENTIFIER(letter) =>
-                  parseNaryInfix(Mul, 0, Identifier(letter))
+                  parseNaryInfix(Mul(`Implicit), 0, Identifier(letter))
                 | _ => raise(Error)
                 };
               } else {
@@ -109,7 +125,7 @@ let parse = (tokens, src: string) => {
                   consume() |> ignore;
                   splitIdentifier(name);
                 };
-                parseNaryInfix(Mul, 0, Number(value));
+                parseNaryInfix(Mul(`Implicit), 0, Number(value));
               | _ => Number(value)
               }
           ),
@@ -136,7 +152,8 @@ let parse = (tokens, src: string) => {
       switch (token.t) {
       | PLUS => Some(parseNaryInfix(Add))
       | MINUS => Some(parseNaryInfix(Add))
-      | STAR => Some(parseNaryInfix(Mul))
+      | STAR => Some(parseNaryInfix(Mul(`Explicit)))
+      | LEFT_PAREN => Some(parseNaryInfix(Mul(`Implicit)))
       | SLASH => Some(parseBinaryInfix(Div))
       | CARET => Some(parseBinaryInfix(Exp))
       | _ => None
@@ -148,6 +165,8 @@ let parse = (tokens, src: string) => {
       | Some(parselet) => parselet()
       | None => raise(Error)
       };
+    /* Js.log(nodeToString(left));
+    Js.log(Lexer.tokenToString(peek())); */
     switch (getInfixParselet(peek())) {
     | Some(parselet) => parselet(precedence, left)
     | None => left
@@ -163,17 +182,28 @@ let parse = (tokens, src: string) => {
   and parseNaryArgs = (op, precedence, token) : list(node) =>
     Lexer.(
       if (precedence < getPrecedence()) {
-        switch (token.t) {
-        | IDENTIFIER(_) => ()
-        | _ => consume() |> ignore
-        };
-        let result = parseExpression(getOpPrecedence(op));
+        /* Js.log("token = " ++ tokenToString(token)); */
+        let result =
+          switch (token.t) {
+          | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
+          | LEFT_PAREN =>
+            consume() |> ignore;
+            /* reset the precedence so that we only get what's inside the parens */
+            let expr = parseExpression(0);
+            switch (consume().t) {
+            | RIGHT_PAREN => expr
+            | _ => raise(Error)
+            };
+          | _ =>
+            consume() |> ignore;
+            parseExpression(getOpPrecedence(op));
+          };
         switch (token.t, peek().t) {
         | (PLUS, PLUS | MINUS) =>
           [result] @ parseNaryArgs(op, precedence, peek())
         | (MINUS, PLUS | MINUS) =>
           [Apply(Neg, [result])] @ parseNaryArgs(op, precedence, peek())
-        | (_, IDENTIFIER(_)) =>
+        | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_) | LEFT_PAREN) =>
           [result] @ parseNaryArgs(op, precedence, peek())
         | (a, b) when a == b =>
           [result] @ parseNaryArgs(op, precedence, peek())
@@ -199,19 +229,3 @@ let parse = (tokens, src: string) => {
     };
   parseExpression(0);
 };
-
-let rec nodeToString = node =>
-  switch (node) {
-  | Apply(op, children) =>
-    "["
-    ++ Js.Array.joinWith(
-         " ",
-         Array.of_list([
-           opToString(op),
-           ...List.map(nodeToString, children),
-         ]),
-       )
-    ++ "]"
-  | Identifier(name) => name
-  | Number(value) => value
-  };
