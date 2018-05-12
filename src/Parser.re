@@ -57,6 +57,7 @@ let parse = (tokens, src: string) => {
       | PLUS => 10
       | MINUS => 10
       | STAR => 20
+      | IDENTIFIER(_) => 25
       | SPACE => 25 /* used for implicit multiplication */
       | SLASH => 20
       | CARET => 30
@@ -70,6 +71,15 @@ let parse = (tokens, src: string) => {
       | None => makeToken(EOF, "")
       }
     );
+  let splitIdentifier = name => {
+    Array.iter(
+      letter =>
+        /* TODO: provide correct location info for letter tokens */
+        Js.Array.unshift(makeToken(IDENTIFIER(letter), letter), tokens)
+        |> ignore,
+      Js.Array.reverseInPlace(Js.String.split("", name)),
+    );
+  };
   let rec getPrefixParselet = token =>
     Lexer.(
       switch (token.t) {
@@ -78,34 +88,32 @@ let parse = (tokens, src: string) => {
           (
             () =>
               if (String.length(name) > 1) {
-                let letters = Js.String.split("", name);
-                Array.iteri(
-                  (i, letter) => {
-                    if (i > 0) {
-                      Js.Array.unshift(makeToken(SPACE, " "), tokens)
-                      |> ignore;
-                    };
-                    Js.Array.unshift(
-                      makeToken(IDENTIFIER(letter), letter),
-                      tokens,
-                    )
-                    |> ignore;
-                  },
-                  Js.Array.reverseInPlace(letters),
-                );
+                splitIdentifier(name);
                 switch (consume().t) {
                 | IDENTIFIER(letter) =>
                   parseNaryInfix(Mul, 0, Identifier(letter))
-                | _ =>
-                  Js.log("before error");
-                  raise(Error);
+                | _ => raise(Error)
                 };
               } else {
                 Identifier(name);
               }
           ),
         )
-      | NUMBER(value) => Some((() => Number(value)))
+      | NUMBER(value) =>
+        Some(
+          (
+            () =>
+              switch (peek().t) {
+              | IDENTIFIER(name) =>
+                if (String.length(name) > 1) {
+                  consume() |> ignore;
+                  splitIdentifier(name);
+                };
+                parseNaryInfix(Mul, 0, Number(value));
+              | _ => Number(value)
+              }
+          ),
+        )
       | MINUS => Some(parsePrefix(Neg))
       | PLUS => Some(parsePrefix(Pos))
       | LEFT_PAREN =>
@@ -155,13 +163,18 @@ let parse = (tokens, src: string) => {
   and parseNaryArgs = (op, precedence, token) : list(node) =>
     Lexer.(
       if (precedence < getPrecedence()) {
-        consume() |> ignore;
+        switch (token.t) {
+        | IDENTIFIER(_) => ()
+        | _ => consume() |> ignore
+        };
         let result = parseExpression(getOpPrecedence(op));
         switch (token.t, peek().t) {
         | (PLUS, PLUS | MINUS) =>
           [result] @ parseNaryArgs(op, precedence, peek())
         | (MINUS, PLUS | MINUS) =>
           [Apply(Neg, [result])] @ parseNaryArgs(op, precedence, peek())
+        | (_, IDENTIFIER(_)) =>
+          [result] @ parseNaryArgs(op, precedence, peek())
         | (a, b) when a == b =>
           [result] @ parseNaryArgs(op, precedence, peek())
         | (MINUS, _) => [Apply(Neg, [result])]
