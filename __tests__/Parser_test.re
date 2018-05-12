@@ -28,6 +28,7 @@ describe("Parser", () => {
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
     testParser("2x", "[* 2 x]");
+    testParser("2(x)", "[* 2 x]");
     testParser("123xy", "[* 123 x y]");
     testParser("x^2*y^2", "[* [^ x 2] [^ y 2]]");
     testParser("x*y^2", "[* x [^ y 2]]");

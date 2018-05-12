@@ -130,16 +130,19 @@ let parse = (tokens, src: string) => {
               }
           ),
         )
-      | MINUS => Some(parsePrefix(Neg))
-      | PLUS => Some(parsePrefix(Pos))
+      | MINUS =>
+        Some((() => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])))
+      | PLUS =>
+        Some((() => Apply(Pos, [parseExpression(getOpPrecedence(Pos))])))
       | LEFT_PAREN =>
         Some(
           (
             () => {
-              let expr = parseExpression(0);
-              switch (consume().t) {
-              | RIGHT_PAREN => expr
-              | _ => raise(Error)
+              let children = parseMulByParens();
+              switch (List.length(children)) {
+              | 0 => raise(Error)
+              | 1 => List.hd(children)
+              | _ => Apply(Mul(`Implicit), children)
               };
             }
           ),
@@ -147,6 +150,15 @@ let parse = (tokens, src: string) => {
       | _ => None
       }
     )
+  and parseMulByParens = () => {
+    let expr = parseExpression(0);
+    switch ((consume().t, peek().t)) {
+    | (RIGHT_PAREN, LEFT_PAREN) => 
+      consume() |> ignore;
+      [expr] @ parseMulByParens()
+    | _ => [expr]
+    };
+  }
   and getInfixParselet = token =>
     Lexer.(
       switch (token.t) {
@@ -159,21 +171,20 @@ let parse = (tokens, src: string) => {
       | _ => None
       }
     )
+  and parsePrefix = () =>
+    /* TODO: think about having the parselet do the consuming */
+    /* This will make it consistent with how infix parselets work */
+    switch (getPrefixParselet(consume())) {
+    | Some(parselet) => parselet()
+    | None => raise(Error)
+    }
   and parseExpression = (precedence: int) => {
-    let left =
-      switch (getPrefixParselet(consume())) {
-      | Some(parselet) => parselet()
-      | None => raise(Error)
-      };
-    /* Js.log(nodeToString(left));
-    Js.log(Lexer.tokenToString(peek())); */
+    let left = parsePrefix();
     switch (getInfixParselet(peek())) {
     | Some(parselet) => parselet(precedence, left)
     | None => left
     };
   }
-  and parsePrefix = (op, ()) =>
-    Apply(Neg, [parseExpression(getOpPrecedence(op))])
   and parseNaryInfix = (op, precedence, left) =>
     switch (parseNaryArgs(op, precedence, peek())) {
     | [] => left
@@ -186,14 +197,7 @@ let parse = (tokens, src: string) => {
         let result =
           switch (token.t) {
           | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
-          | LEFT_PAREN =>
-            consume() |> ignore;
-            /* reset the precedence so that we only get what's inside the parens */
-            let expr = parseExpression(0);
-            switch (consume().t) {
-            | RIGHT_PAREN => expr
-            | _ => raise(Error)
-            };
+          | LEFT_PAREN => parseExpression(getOpPrecedence(op))
           | _ =>
             consume() |> ignore;
             parseExpression(getOpPrecedence(op));
