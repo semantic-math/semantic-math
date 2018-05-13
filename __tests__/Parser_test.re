@@ -16,16 +16,19 @@ describe("Parser", () => {
     testParser("1+2*3+4*5+6", "[+ 1 [* 2 3] [* 4 5] 6]");
     testParser("a^2 * b^2 * c^2", "[* [^ a 2] [^ b 2] [^ c 2]]");  
   });
-  Skip.describe("multiplication", () => {
+  describe("multiplication", () => {
     testParser("a * b * c", "[* a b c]");
     testParser("abc", "[* a b c]");
     testParser("abcd", "[* a b c d]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
-    testParser("(a)(b)(c)", "[* a b c]");
-    testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
+    /* testParser("(a)(b)(c)", "[* a b c]");
+    testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]"); */
     testParser("2x", "[* 2 x]");
-    testParser("2(x)", "[* 2 x]");
+    /* testParser("2(x)", "[* 2 x]"); */
     testParser("123xy", "[* 123 x y]");
+    testParser("x^2y^2", "[* [^ x 2] [^ y 2]]");
+    /* TODO: differentiate implicit multiplication from explicit */
+    /* testParser("a^2b^3 * x^2y^3", "[* [^ x 2] [^ y 2]]"); */
     testParser("x^2*y^2", "[* [^ x 2] [^ y 2]]");
     testParser("x*y^2", "[* x [^ y 2]]");
     testParser("xy^2", "[* x [^ y 2]]");

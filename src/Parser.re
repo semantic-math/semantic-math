@@ -57,10 +57,19 @@ let parse = tokens : node => {
       | PLUS => getOpPrecedence(Add)
       | MINUS => getOpPrecedence(Add)
       | STAR => getOpPrecedence(Mul)
+      | IDENTIFIER(_) => getOpPrecedence(Mul)
       | CARET => getOpPrecedence(Exp)
       | SLASH => getOpPrecedence(Div)
       | _ => 0
       }
+    );
+  let splitIdentifier = name =>
+    Array.iter(
+      letter =>
+        /* TODO: provide correct location info for letter tokens */
+        Js.Array.unshift(makeToken(IDENTIFIER(letter), letter), tokens)
+        |> ignore,
+      Js.Array.reverseInPlace(Js.String.split("", name)),
     );
   let rec parseExpression = (precedence: int) : node => {
     let left = ref(parsePrefix());
@@ -80,6 +89,10 @@ let parse = tokens : node => {
        */
       | MINUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
       | STAR => Apply(Mul, [left] @ parseNaryArgs(Mul, token))
+      | IDENTIFIER(name) => 
+        consume() |> ignore;  /* consume the un-split identifier */
+        splitIdentifier(name);
+        Apply(Mul, [left] @ parseNaryArgs(Mul, peek()))
       | CARET =>
         consume() |> ignore;
         Apply(Exp, [left, parseExpression(getOpPrecedence(Exp))]);
@@ -91,12 +104,16 @@ let parse = tokens : node => {
     )
   and parseNaryArgs = (op, token) : list(node) => {
     open Lexer;
-    consume() |> ignore;
-    let result = parseExpression(getOpPrecedence(op));
+    let result = switch(token.t) {
+    | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
+    | _ => consume() |> ignore; parseExpression(getOpPrecedence(op))
+    };
     switch (token.t, peek().t) {
     | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op, peek())
     | (MINUS, PLUS | MINUS) =>
       [Apply(Neg, [result])] @ parseNaryArgs(op, peek())
+    | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_) | LEFT_PAREN) =>
+      [result] @ parseNaryArgs(op, peek())
     | (a, b) when a == b => [result] @ parseNaryArgs(op, peek())
     | (MINUS, _) => [Apply(Neg, [result])]
     | (_, _) => [result]
@@ -106,7 +123,16 @@ let parse = tokens : node => {
     Lexer.(
       switch (consume().t) {
       | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
-      | IDENTIFIER(name) => Identifier(name)
+      | IDENTIFIER(name) =>
+        if (String.length(name) > 1) {
+          splitIdentifier(name);
+          switch (consume().t) {
+          | IDENTIFIER(letter) => parseInfix(Identifier(letter), peek())
+          | _ => raise(Unhandled)
+          };
+        } else {
+          Identifier(name);
+        }
       | NUMBER(value) => Number(value)
       | _ => raise(Unhandled)
       }
