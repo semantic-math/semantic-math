@@ -1,6 +1,6 @@
 type operator =
   | Add
-  | Mul
+  | Mul([ | `Implicit | `Explicit])
   | Div
   | Exp
   | Neg
@@ -9,15 +9,20 @@ type operator =
 let getOpPrecedence = op =>
   switch (op) {
   | Add => 3
-  | Mul => 4
+  | Mul(`Explicit) => 4
   /***
    * We allow division to have higher precedence so that it's easy to write
-   * multiplication of fractions
+   * multiplication of fractions e.g. x/y * a/b should parse as [* [/ x y] [/ a b]]
    */
   | Div => 5
-  | Neg => 6
-  | Pos => 6
-  | Exp => 7
+  /***
+   * We give implicit multiplication higher precedence than division to support
+   * parsing expressions like ab / cd as [/ [* a b] [* c d]]
+   */
+  | Mul(`Implicit) => 6
+  | Neg => 7
+  | Pos => 7
+  | Exp => 8
   };
 
 type node =
@@ -56,9 +61,9 @@ let parse = tokens : node => {
       switch (peek().t) {
       | PLUS => getOpPrecedence(Add)
       | MINUS => getOpPrecedence(Add)
-      | STAR => getOpPrecedence(Mul)
-      | IDENTIFIER(_) => getOpPrecedence(Mul)
-      | LEFT_PAREN => getOpPrecedence(Mul)
+      | STAR => getOpPrecedence(Mul(`Explicit))
+      | IDENTIFIER(_) => getOpPrecedence(Mul(`Implicit))
+      | LEFT_PAREN => getOpPrecedence(Mul(`Implicit))
       | CARET => getOpPrecedence(Exp)
       | SLASH => getOpPrecedence(Div)
       | _ => 0
@@ -89,12 +94,12 @@ let parse = tokens : node => {
        * to neg(ation) operators.
        */
       | MINUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
-      | STAR => Apply(Mul, [left] @ parseNaryArgs(Mul, token))
-      | LEFT_PAREN => Apply(Mul, [left] @ parseNaryArgs(Mul, peek()));
+      | STAR => Apply(Mul(`Explicit), [left] @ parseNaryArgs(Mul(`Explicit), token))
+      | LEFT_PAREN => Apply(Mul(`Implicit), [left] @ parseNaryArgs(Mul(`Implicit), peek()));
       | IDENTIFIER(name) =>
         consume() |> ignore; /* consume the un-split identifier */
         splitIdentifier(name);
-        Apply(Mul, [left] @ parseNaryArgs(Mul, peek()));
+        Apply(Mul(`Implicit), [left] @ parseNaryArgs(Mul(`Implicit), peek()));
       | CARET =>
         consume() |> ignore;
         Apply(Exp, [left, parseExpression(getOpPrecedence(Exp))]);
@@ -144,7 +149,7 @@ let parse = tokens : node => {
         switch (List.length(children)) {
         | 0 => raise(Unhandled)
         | 1 => List.hd(children)
-        | _ => Apply(Mul, children)
+        | _ => Apply(Mul(`Implicit), children)
         };
       | _ => raise(Unhandled)
       }
@@ -164,7 +169,7 @@ let parse = tokens : node => {
 let opToString = op =>
   switch (op) {
   | Add => "+"
-  | Mul => "*"
+  | Mul(_) => "*"
   | Neg => "neg"
   | Pos => "pos"
   | Div => "/"

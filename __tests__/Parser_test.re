@@ -28,8 +28,7 @@ describe("Parser", () => {
     testParser("2(x)", "[* 2 x]");
     testParser("123xy", "[* 123 x y]");
     testParser("x^2y^2", "[* [^ x 2] [^ y 2]]");
-    /* TODO: differentiate implicit multiplication from explicit */
-    /* testParser("a^2b^3 * x^2y^3", "[* [^ x 2] [^ y 2]]"); */
+    testParser("a^2b^3 * x^2y^3", "[* [* [^ a 2] [^ b 3]] [* [^ x 2] [^ y 3]]]");
     testParser("x^2*y^2", "[* [^ x 2] [^ y 2]]");
     testParser("x*y^2", "[* x [^ y 2]]");
     testParser("xy^2", "[* x [^ y 2]]");
@@ -38,7 +37,11 @@ describe("Parser", () => {
     testParser("1/2", "[/ 1 2]");
     testParser("1/2/3", "[/ [/ 1 2] 3]");
     testParser("1/xy", "[/ 1 [* x y]]");
+    testParser("1/xy^2", "[/ 1 [* x [^ y 2]]]");
     testParser("1/x^2", "[/ 1 [^ x 2]]");
+    testParser("a/b * 1/2", "[* [/ a b] [/ 1 2]]");
+    testParser("ab / cd", "[/ [* a b] [* c d]]");
+    testParser("a * b / c * d", "[* a [/ b c] d]");
   });
   describe("parentheses", () => {
     testParser("2*(3+4)", "[* 2 [+ 3 4]]");
