@@ -1,4 +1,9 @@
 type operator =
+  | Eq
+  | Lt
+  | Gt
+  | Lte
+  | Gte
   | Add
   | Mul([ | `Implicit | `Explicit])
   | Div
@@ -8,6 +13,11 @@ type operator =
 
 let getOpPrecedence = op =>
   switch (op) {
+  | Eq => 1
+  | Lt => 1
+  | Gt => 1
+  | Lte => 1
+  | Gte => 1
   | Add => 3
   | Mul(`Explicit) => 4
   /***
@@ -59,6 +69,11 @@ let parse = tokens : node => {
   let getPrecedence = () =>
     Lexer.(
       switch (peek().t) {
+      | EQUAL => getOpPrecedence(Eq)
+      | LESS_THAN => getOpPrecedence(Lt)
+      | GREATER_THAN => getOpPrecedence(Gt)
+      | LESS_THAN_OR_EQUAL => getOpPrecedence(Lte)
+      | GREATER_THAN_OR_EQUAL => getOpPrecedence(Gte)
       | PLUS => getOpPrecedence(Add)
       | MINUS => getOpPrecedence(Add)
       | STAR => getOpPrecedence(Mul(`Explicit))
@@ -88,6 +103,11 @@ let parse = tokens : node => {
   and parseInfix = (left, token) =>
     Lexer.(
       switch (token.t) {
+      | EQUAL => Apply(Eq, [left] @ parseNaryArgs(Eq, token))
+      | LESS_THAN => Apply(Lt, [left] @ parseNaryArgs(Lt, token))
+      | GREATER_THAN => Apply(Gt, [left] @ parseNaryArgs(Gt, token))
+      | LESS_THAN_OR_EQUAL => Apply(Lte, [left] @ parseNaryArgs(Lte, token))
+      | GREATER_THAN_OR_EQUAL => Apply(Gte, [left] @ parseNaryArgs(Gte, token))
       | PLUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
       /***
        * Parse minus as addition, parseNaryArgs converts any minus signs
@@ -168,6 +188,11 @@ let parse = tokens : node => {
 
 let opToString = op =>
   switch (op) {
+  | Eq => "="
+  | Lt => "<"
+  | Gt => ">"
+  | Lte => "<="
+  | Gte => ">="
   | Add => "+"
   | Mul(_) => "*"
   | Neg => "neg"

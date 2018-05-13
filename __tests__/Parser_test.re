@@ -69,11 +69,11 @@ describe("Parser", () => {
     testParser("(-2)^x", "[^ [neg 2] x]");
     testParser("a^-2*b^-3", "[* [^ a [neg 2]] [^ b [neg 3]]]");
   });
-  Skip.describe("equations", () => {
+  describe("equations", () => {
     testParser("x + 5 = 10", "[= [+ x 5] 10]");
     testParser("x = y = z", "[= x y z]");
   });
-  Skip.describe("inequalities", () => {
+  describe("inequalities", () => {
     testParser("x < y", "[< x y]");
     testParser("x < y < z", "[< x y z]");
     testParser("x <= y", "[<= x y]");
