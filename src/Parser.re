@@ -58,6 +58,7 @@ let parse = tokens : node => {
       | MINUS => getOpPrecedence(Add)
       | STAR => getOpPrecedence(Mul)
       | IDENTIFIER(_) => getOpPrecedence(Mul)
+      | LEFT_PAREN => getOpPrecedence(Mul)
       | CARET => getOpPrecedence(Exp)
       | SLASH => getOpPrecedence(Div)
       | _ => 0
@@ -89,10 +90,11 @@ let parse = tokens : node => {
        */
       | MINUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
       | STAR => Apply(Mul, [left] @ parseNaryArgs(Mul, token))
-      | IDENTIFIER(name) => 
-        consume() |> ignore;  /* consume the un-split identifier */
+      | LEFT_PAREN => Apply(Mul, [left] @ parseNaryArgs(Mul, peek()));
+      | IDENTIFIER(name) =>
+        consume() |> ignore; /* consume the un-split identifier */
         splitIdentifier(name);
-        Apply(Mul, [left] @ parseNaryArgs(Mul, peek()))
+        Apply(Mul, [left] @ parseNaryArgs(Mul, peek()));
       | CARET =>
         consume() |> ignore;
         Apply(Exp, [left, parseExpression(getOpPrecedence(Exp))]);
@@ -104,10 +106,13 @@ let parse = tokens : node => {
     )
   and parseNaryArgs = (op, token) : list(node) => {
     open Lexer;
-    let result = switch(token.t) {
-    | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
-    | _ => consume() |> ignore; parseExpression(getOpPrecedence(op))
-    };
+    let result =
+      switch (token.t) {
+      | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
+      | _ =>
+        consume() |> ignore;
+        parseExpression(getOpPrecedence(op));
+      };
     switch (token.t, peek().t) {
     | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op, peek())
     | (MINUS, PLUS | MINUS) =>
@@ -132,11 +137,27 @@ let parse = tokens : node => {
           };
         } else {
           Identifier(name);
-        }
+        };
       | NUMBER(value) => Number(value)
+      | LEFT_PAREN => 
+        let children = parseMulByParens();
+        switch (List.length(children)) {
+        | 0 => raise(Unhandled)
+        | 1 => List.hd(children)
+        | _ => Apply(Mul, children)
+        };
       | _ => raise(Unhandled)
       }
-    );
+    )
+  and parseMulByParens = () => {
+    let expr = parseExpression(0);
+    switch (consume().t, peek().t) {
+    | (RIGHT_PAREN, LEFT_PAREN) =>
+      consume() |> ignore;
+      [expr] @ parseMulByParens();
+    | _ => [expr]
+    };
+  };
   parseExpression(0);
 };
 
