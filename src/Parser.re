@@ -35,6 +35,21 @@ let getOpPrecedence = op =>
   | Exp => 8
   };
 
+let tokenToOp = token =>
+  Lexer.(
+    switch (token.t) {
+    | EQUAL => Some(Eq)
+    | LESS_THAN => Some(Lt)
+    | GREATER_THAN => Some(Gt)
+    | LESS_THAN_OR_EQUAL => Some(Lte)
+    | GREATER_THAN_OR_EQUAL => Some(Gte)
+    | PLUS => Some(Add)
+    | STAR => Some(Mul(`Explicit))
+    | LEFT_PAREN => Some(Mul(`Implicit))
+    | _ => None
+    }
+  );
+
 type node =
   | Apply(operator, list(node))
   | Identifier(string)
@@ -103,48 +118,48 @@ let parse = tokens : node => {
   and parseInfix = (left, token) =>
     Lexer.(
       switch (token.t) {
-      | EQUAL => Apply(Eq, [left] @ parseNaryArgs(Eq, token))
-      | LESS_THAN => Apply(Lt, [left] @ parseNaryArgs(Lt, token))
-      | GREATER_THAN => Apply(Gt, [left] @ parseNaryArgs(Gt, token))
-      | LESS_THAN_OR_EQUAL => Apply(Lte, [left] @ parseNaryArgs(Lte, token))
-      | GREATER_THAN_OR_EQUAL => Apply(Gte, [left] @ parseNaryArgs(Gte, token))
-      | PLUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
+      | EQUAL => parseNaryInfix(left, Eq)
+      | LESS_THAN => parseNaryInfix(left, Lt)
+      | GREATER_THAN => parseNaryInfix(left, Gt)
+      | LESS_THAN_OR_EQUAL => parseNaryInfix(left, Lte)
+      | GREATER_THAN_OR_EQUAL => parseNaryInfix(left, Gte)
+      | PLUS => parseNaryInfix(left, Add)
       /***
        * Parse minus as addition, parseNaryArgs converts any minus signs
        * to neg(ation) operators.
        */
-      | MINUS => Apply(Add, [left] @ parseNaryArgs(Add, token))
-      | STAR => Apply(Mul(`Explicit), [left] @ parseNaryArgs(Mul(`Explicit), token))
-      | LEFT_PAREN => Apply(Mul(`Implicit), [left] @ parseNaryArgs(Mul(`Implicit), peek()));
+      | MINUS => parseNaryInfix(left, Add)
+      | STAR => parseNaryInfix(left, Mul(`Explicit))
+      | LEFT_PAREN => parseNaryInfix(left, Mul(`Implicit))
       | IDENTIFIER(name) =>
         consume() |> ignore; /* consume the un-split identifier */
         splitIdentifier(name);
-        Apply(Mul(`Implicit), [left] @ parseNaryArgs(Mul(`Implicit), peek()));
-      | CARET =>
-        consume() |> ignore;
-        Apply(Exp, [left, parseExpression(getOpPrecedence(Exp))]);
-      | SLASH =>
-        consume() |> ignore;
-        Apply(Div, [left, parseExpression(getOpPrecedence(Div))]);
+        parseNaryInfix(left, Mul(`Implicit));
+      | CARET => parseBinaryInfix(left, Exp)
+      | SLASH => parseBinaryInfix(left, Div)
       | _ => left
       }
     )
-  and parseNaryArgs = (op, token) : list(node) => {
+  and parseNaryInfix = (left, op) => Apply(op, [left] @ parseNaryArgs(op))
+  and parseBinaryInfix = (left, op) => {
+    consume() |> ignore;
+    Apply(op, [left, parseExpression(getOpPrecedence(op))]);
+  }
+  and parseNaryArgs = op : list(node) => {
     open Lexer;
-    let result =
-      switch (token.t) {
-      | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
-      | _ =>
-        consume() |> ignore;
-        parseExpression(getOpPrecedence(op));
-      };
+    let token = peek();
+    switch (token.t) {
+    /* there is no token for the operator for implicit multiplication by identifier */
+    | IDENTIFIER(_) => ()
+    | _ => consume() |> ignore
+    };
+    let result = parseExpression(getOpPrecedence(op));
     switch (token.t, peek().t) {
-    | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op, peek())
-    | (MINUS, PLUS | MINUS) =>
-      [Apply(Neg, [result])] @ parseNaryArgs(op, peek())
+    | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op)
+    | (MINUS, PLUS | MINUS) => [Apply(Neg, [result])] @ parseNaryArgs(op)
     | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_) | LEFT_PAREN) =>
-      [result] @ parseNaryArgs(op, peek())
-    | (a, b) when a == b => [result] @ parseNaryArgs(op, peek())
+      [result] @ parseNaryArgs(op)
+    | (a, b) when a == b => [result] @ parseNaryArgs(op)
     | (MINUS, _) => [Apply(Neg, [result])]
     | (_, _) => [result]
     };
@@ -162,9 +177,9 @@ let parse = tokens : node => {
           };
         } else {
           Identifier(name);
-        };
+        }
       | NUMBER(value) => Number(value)
-      | LEFT_PAREN => 
+      | LEFT_PAREN =>
         let children = parseMulByParens();
         switch (List.length(children)) {
         | 0 => raise(Unhandled)
