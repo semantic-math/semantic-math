@@ -130,13 +130,17 @@ let parse = tokens : node => {
        */
       | MINUS => parseNaryInfix(left, Add)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
-      | LEFT_PAREN => parseNaryInfix(left, Mul(`Implicit))
+      /* | LEFT_PAREN => parseNaryInfix(left, Mul(`Implicit)) */
+      | LEFT_PAREN =>
+        consume() |> ignore;
+        Apply(Mul(`Implicit), [left] @ parseMulByParens());
       | IDENTIFIER(name) =>
         consume() |> ignore; /* consume the un-split identifier */
         splitIdentifier(name);
         parseNaryInfix(left, Mul(`Implicit));
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
+      | RIGHT_PAREN => raise(Unhandled) /* unmatched right paren */
       | _ => left
       }
     )
@@ -180,22 +184,25 @@ let parse = tokens : node => {
         }
       | NUMBER(value) => Number(value)
       | LEFT_PAREN =>
-        let children = parseMulByParens();
-        switch (List.length(children)) {
-        | 0 => raise(Unhandled)
-        | 1 => List.hd(children)
-        | _ => Apply(Mul(`Implicit), children)
+        let expr = parseExpression(0);
+        switch (consume().t) {
+        | RIGHT_PAREN => expr
+        | _ => raise(Unhandled) /* unmatched left paren */
         };
-      | _ => raise(Unhandled)
+      | _ => raise(Unhandled) /* unexpected token */
       }
     )
   and parseMulByParens = () => {
     let expr = parseExpression(0);
-    switch (consume().t, peek().t) {
-    | (RIGHT_PAREN, LEFT_PAREN) =>
-      consume() |> ignore;
-      [expr] @ parseMulByParens();
-    | _ => [expr]
+    switch (consume().t) {
+    | RIGHT_PAREN => 
+      switch (peek().t) {
+      | LEFT_PAREN =>
+        consume() |> ignore;
+        [expr] @ parseMulByParens()
+      | _ => [expr]
+      }
+    | _ => raise(Unhandled) /* unmatched left paren */
     };
   };
   parseExpression(0);
