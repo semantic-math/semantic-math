@@ -7,8 +7,8 @@ describe("Parser", () => {
       expr ++ " parses as " ++ tree,
       () => {
         let tokens = Lexer.lex(expr);
-        let ast = Parser.parse(tokens, expr);
-        expect(Parser.nodeToString(ast)) |> toBe(tree);
+        let ast = OldParser.parse(tokens, expr);
+        expect(OldParser.nodeToString(ast)) |> toBe(tree);
       },
     );
   /* let testError = (expr, exc) =>
