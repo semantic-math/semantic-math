@@ -1,4 +1,8 @@
-type operator =
+type node =
+  | Apply(operator, list(node))
+  | Identifier(string)
+  | Number(string)
+and operator =
   | Eq
   | Lt
   | Gt
@@ -9,15 +13,18 @@ type operator =
   | Div
   | Exp
   | Neg
-  | Pos;
+  | Pos
+  | Comma
+  | Func(node);
 
 let getOpPrecedence = op =>
   switch (op) {
-  | Eq => 1
-  | Lt => 1
-  | Gt => 1
-  | Lte => 1
-  | Gte => 1
+  | Comma => 1
+  | Eq => 2
+  | Lt => 2
+  | Gt => 2
+  | Lte => 2
+  | Gte => 2
   | Add => 3
   | Mul(`Explicit) => 4
   /***
@@ -33,27 +40,8 @@ let getOpPrecedence = op =>
   | Neg => 7
   | Pos => 7
   | Exp => 8
+  | Func(_) => 9
   };
-
-let tokenToOp = token =>
-  Lexer.(
-    switch (token.t) {
-    | EQUAL => Some(Eq)
-    | LESS_THAN => Some(Lt)
-    | GREATER_THAN => Some(Gt)
-    | LESS_THAN_OR_EQUAL => Some(Lte)
-    | GREATER_THAN_OR_EQUAL => Some(Gte)
-    | PLUS => Some(Add)
-    | STAR => Some(Mul(`Explicit))
-    | LEFT_PAREN => Some(Mul(`Implicit))
-    | _ => None
-    }
-  );
-
-type node =
-  | Apply(operator, list(node))
-  | Identifier(string)
-  | Number(string);
 
 exception Unhandled;
 
@@ -67,7 +55,7 @@ let makeToken = (t, value) =>
     },
   };
 
-let parse = tokens : node => {
+let parse = tokens => {
   let consume = () =>
     Lexer.(
       switch (Js.Array.shift(tokens)) {
@@ -84,6 +72,7 @@ let parse = tokens : node => {
   let getPrecedence = () =>
     Lexer.(
       switch (peek().t) {
+      | COMMA => getOpPrecedence(Comma)
       | EQUAL => getOpPrecedence(Eq)
       | LESS_THAN => getOpPrecedence(Lt)
       | GREATER_THAN => getOpPrecedence(Gt)
@@ -107,17 +96,18 @@ let parse = tokens : node => {
         |> ignore,
       Js.Array.reverseInPlace(Js.String.split("", name)),
     );
-  let rec parseExpression = (precedence: int) : node => {
+  let rec parseExpression = precedence => {
     let left = ref(parsePrefix());
     while (precedence < getPrecedence()) {
-      left := parseInfix(left^, peek());
+      left := parseInfix(left^);
     };
     let result = left^;
     result;
   }
-  and parseInfix = (left, token) =>
+  and parseInfix = left =>
     Lexer.(
-      switch (token.t) {
+      switch (peek().t) {
+      | COMMA => parseNaryInfix(left, Comma)
       | EQUAL => parseNaryInfix(left, Eq)
       | LESS_THAN => parseNaryInfix(left, Lt)
       | GREATER_THAN => parseNaryInfix(left, Gt)
@@ -130,13 +120,23 @@ let parse = tokens : node => {
        */
       | MINUS => parseNaryInfix(left, Add)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
-      /* | LEFT_PAREN => parseNaryInfix(left, Mul(`Implicit)) */
       | LEFT_PAREN =>
         consume() |> ignore;
-        Apply(Mul(`Implicit), [left] @ parseMulByParens());
+        let children = [left] @ parseMulByParens();
+        switch (children) {
+        | [left, right] => 
+          switch ((left, right)) {
+          | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
+          | (Number(_), _) => Apply(Mul(`Implicit), children)
+          | _ => Apply(Func(left), [right])
+          }
+        | _ => Apply(Mul(`Implicit), children)
+        };
       | IDENTIFIER(name) =>
-        consume() |> ignore; /* consume the un-split identifier */
-        splitIdentifier(name);
+        if (! List.mem(name, Data.wellKnownIdentifiers)) {
+          consume() |> ignore; /* consume the un-split identifier */
+          splitIdentifier(name);
+        };
         parseNaryInfix(left, Mul(`Implicit));
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
@@ -149,7 +149,7 @@ let parse = tokens : node => {
     consume() |> ignore;
     Apply(op, [left, parseExpression(getOpPrecedence(op))]);
   }
-  and parseNaryArgs = op : list(node) => {
+  and parseNaryArgs = op => {
     open Lexer;
     let token = peek();
     switch (token.t) {
@@ -161,22 +161,23 @@ let parse = tokens : node => {
     switch (token.t, peek().t) {
     | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op)
     | (MINUS, PLUS | MINUS) => [Apply(Neg, [result])] @ parseNaryArgs(op)
-    | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_) | LEFT_PAREN) =>
+    | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_)) =>
       [result] @ parseNaryArgs(op)
     | (a, b) when a == b => [result] @ parseNaryArgs(op)
     | (MINUS, _) => [Apply(Neg, [result])]
     | (_, _) => [result]
     };
   }
-  and parsePrefix = () : node =>
+  and parsePrefix = () =>
     Lexer.(
       switch (consume().t) {
       | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
       | IDENTIFIER(name) =>
-        if (String.length(name) > 1) {
+        if (String.length(name) > 1
+            && ! List.mem(name, Data.wellKnownIdentifiers)) {
           splitIdentifier(name);
           switch (consume().t) {
-          | IDENTIFIER(letter) => parseInfix(Identifier(letter), peek())
+          | IDENTIFIER(letter) => parseInfix(Identifier(letter))
           | _ => raise(Unhandled)
           };
         } else {
@@ -195,11 +196,11 @@ let parse = tokens : node => {
   and parseMulByParens = () => {
     let expr = parseExpression(0);
     switch (consume().t) {
-    | RIGHT_PAREN => 
+    | RIGHT_PAREN =>
       switch (peek().t) {
       | LEFT_PAREN =>
         consume() |> ignore;
-        [expr] @ parseMulByParens()
+        [expr] @ parseMulByParens();
       | _ => [expr]
       }
     | _ => raise(Unhandled) /* unmatched left paren */
@@ -207,21 +208,6 @@ let parse = tokens : node => {
   };
   parseExpression(0);
 };
-
-let opToString = op =>
-  switch (op) {
-  | Eq => "="
-  | Lt => "<"
-  | Gt => ">"
-  | Lte => "<="
-  | Gte => ">="
-  | Add => "+"
-  | Mul(_) => "*"
-  | Neg => "neg"
-  | Pos => "pos"
-  | Div => "/"
-  | Exp => "^"
-  };
 
 let rec nodeToString = node =>
   switch (node) {
@@ -237,4 +223,20 @@ let rec nodeToString = node =>
     ++ "]"
   | Identifier(name) => name
   | Number(value) => value
+  }
+and opToString = op =>
+  switch (op) {
+  | Comma => ","
+  | Eq => "="
+  | Lt => "<"
+  | Gt => ">"
+  | Lte => "<="
+  | Gte => ">="
+  | Add => "+"
+  | Mul(_) => "*"
+  | Neg => "neg"
+  | Pos => "pos"
+  | Div => "/"
+  | Exp => "^"
+  | Func(name) => nodeToString(name)
   };

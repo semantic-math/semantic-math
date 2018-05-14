@@ -92,12 +92,13 @@ describe("Parser", () => {
     testError("1 + 2 3", Parser.Missing_operator);
     testError("1 + 2 + +", Parser.Missing_operand);
   }); */
-  Skip.describe("function", () => {
+  describe("function", () => {
     testParser("f(x)", "[f x]");
     testParser("f(x, y)", "[f x y]");
     testParser("f(g(x),y)", "[f [g x] y]");
     testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
     testParser("sin(x)", "[sin x]");
+    testParser("2sin(x)", "[sin x]"); /* We're not using the correct precedence for ( here */
     testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
     testParser("sin^2(x)", "[[^ sin 2] x]");
     testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]");
