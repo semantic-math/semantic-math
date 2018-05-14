@@ -24,10 +24,12 @@ describe("Parser", () => {
     testParser("ab * cd", "[* [* a b] [* c d]]");
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
+    testParser("-(x)(y)(z)", "[neg [* x y z]]");
     testParser("2x", "[* 2 x]");
     testParser("2(x)", "[* 2 x]");
     testParser("2(x)(y) * 3(a)(b)", "[* [* 2 x y] [* 3 a b]]");
     testParser("123xy", "[* 123 x y]");
+    testParser("x^-1y^-1", "[* [^ x [neg 1]] [^ y [neg 1]]]");
     testParser("x^2y^2", "[* [^ x 2] [^ y 2]]");
     testParser("a^2b^3 * x^2y^3", "[* [* [^ a 2] [^ b 3]] [* [^ x 2] [^ y 3]]]");
     testParser("x^2*y^2", "[* [^ x 2] [^ y 2]]");

@@ -32,15 +32,16 @@ let getOpPrecedence = op =>
    * multiplication of fractions e.g. x/y * a/b should parse as [* [/ x y] [/ a b]]
    */
   | Div => 5
-  /***
-   * We give implicit multiplication higher precedence than division to support
-   * parsing expressions like ab / cd as [/ [* a b] [* c d]]
-   */
-  | Mul(`Implicit) => 6
   | Neg => 7
   | Pos => 7
-  | Exp => 8
-  | Func(_) => 9
+  /***
+   * We give implicit multiplication higher precedence than division to support
+   * parsing expressions like ab / cd as [/ [* a b] [* c d]] and higher than
+   * Pos/Neg prefixes to support -(a)(b)(c) parsing as [neg [* a b c]].
+   */
+  | Mul(`Implicit) => 6
+  | Exp => 9
+  | Func(_) => 10
   };
 
 exception Unhandled;
@@ -55,23 +56,56 @@ let makeToken = (t, value) =>
     },
   };
 
-let parse = tokens => {
+let rec preprocessTokens = (tokens: list(Lexer.token)) =>
+  Lexer.(
+    switch (tokens) {
+    | [hd, ...tl] =>
+      switch (hd.t) {
+      | IDENTIFIER(name) =>
+        if (List.mem(name, Data.wellKnownIdentifiers)) {
+          [hd, ...preprocessTokens(tl)];
+        } else {
+          switch (Array.to_list(Js.String.split("", name))) {
+          | [_] => [hd, ...preprocessTokens(tl)]
+          | letters =>
+            List.map(
+              letter => makeToken(IDENTIFIER(letter), letter),
+              letters,
+            )
+            @ preprocessTokens(tl)
+          };
+        }
+      | _ => [hd, ...preprocessTokens(tl)]
+      }
+    | [] => []
+    }
+  );
+
+let parse = (tokens: array(Lexer.token)) => {
+  /* TODO: instead of actually consuming tokens, just advance an index */
+  let tokens = Array.of_list(preprocessTokens(Array.to_list(tokens)));
+  let index = ref(0);
   let consume = () =>
     Lexer.(
-      switch (Js.Array.shift(tokens)) {
-      | Some(token) => token
-      | None => makeToken(EOF, "")
+      if (index^ < Array.length(tokens)) {
+        let result = tokens[index^];
+        index := index^ + 1;
+        result;
+      } else {
+        makeToken(EOF, "");
       }
     );
-  let peek = () =>
+  let peek = offset =>
     Lexer.(
-      try (tokens[0]) {
-      | Invalid_argument("index out of bounds") => makeToken(EOF, "")
+      if (index^ + offset < Array.length(tokens)) {
+        tokens[index^ + offset];
+      } else {
+        makeToken(EOF, "");
       }
     );
   let getPrecedence = () =>
     Lexer.(
-      switch (peek().t) {
+      switch (peek(0).t) {
       | COMMA => getOpPrecedence(Comma)
       | EQUAL => getOpPrecedence(Eq)
       | LESS_THAN => getOpPrecedence(Lt)
@@ -88,14 +122,6 @@ let parse = tokens => {
       | _ => 0
       }
     );
-  let splitIdentifier = name =>
-    Array.iter(
-      letter =>
-        /* TODO: provide correct location info for letter tokens */
-        Js.Array.unshift(makeToken(IDENTIFIER(letter), letter), tokens)
-        |> ignore,
-      Js.Array.reverseInPlace(Js.String.split("", name)),
-    );
   let rec parseExpression = precedence => {
     let left = ref(parsePrefix());
     while (precedence < getPrecedence()) {
@@ -106,7 +132,7 @@ let parse = tokens => {
   }
   and parseInfix = left =>
     Lexer.(
-      switch (peek().t) {
+      switch (peek(0).t) {
       | COMMA => parseNaryInfix(left, Comma)
       | EQUAL => parseNaryInfix(left, Eq)
       | LESS_THAN => parseNaryInfix(left, Lt)
@@ -124,20 +150,15 @@ let parse = tokens => {
         consume() |> ignore;
         let children = [left] @ parseMulByParens();
         switch (children) {
-        | [left, right] => 
-          switch ((left, right)) {
+        | [left, right] =>
+          switch (left, right) {
           | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
           | (Number(_), _) => Apply(Mul(`Implicit), children)
           | _ => Apply(Func(left), [right])
           }
         | _ => Apply(Mul(`Implicit), children)
         };
-      | IDENTIFIER(name) =>
-        if (! List.mem(name, Data.wellKnownIdentifiers)) {
-          consume() |> ignore; /* consume the un-split identifier */
-          splitIdentifier(name);
-        };
-        parseNaryInfix(left, Mul(`Implicit));
+      | IDENTIFIER(_) => parseNaryInfix(left, Mul(`Implicit))
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | RIGHT_PAREN => raise(Unhandled) /* unmatched right paren */
@@ -151,14 +172,14 @@ let parse = tokens => {
   }
   and parseNaryArgs = op => {
     open Lexer;
-    let token = peek();
+    let token = peek(0);
     switch (token.t) {
     /* there is no token for the operator for implicit multiplication by identifier */
     | IDENTIFIER(_) => ()
     | _ => consume() |> ignore
     };
     let result = parseExpression(getOpPrecedence(op));
-    switch (token.t, peek().t) {
+    switch (token.t, peek(0).t) {
     | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op)
     | (MINUS, PLUS | MINUS) => [Apply(Neg, [result])] @ parseNaryArgs(op)
     | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_)) =>
@@ -172,17 +193,7 @@ let parse = tokens => {
     Lexer.(
       switch (consume().t) {
       | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
-      | IDENTIFIER(name) =>
-        if (String.length(name) > 1
-            && ! List.mem(name, Data.wellKnownIdentifiers)) {
-          splitIdentifier(name);
-          switch (consume().t) {
-          | IDENTIFIER(letter) => parseInfix(Identifier(letter))
-          | _ => raise(Unhandled)
-          };
-        } else {
-          Identifier(name);
-        }
+      | IDENTIFIER(name) => Identifier(name)
       | NUMBER(value) => Number(value)
       | LEFT_PAREN =>
         let expr = parseExpression(0);
@@ -197,7 +208,7 @@ let parse = tokens => {
     let expr = parseExpression(0);
     switch (consume().t) {
     | RIGHT_PAREN =>
-      switch (peek().t) {
+      switch (peek(0).t) {
       | LEFT_PAREN =>
         consume() |> ignore;
         [expr] @ parseMulByParens();
