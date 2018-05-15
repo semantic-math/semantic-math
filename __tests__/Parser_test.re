@@ -131,4 +131,12 @@ describe("Parser", () => {
     testParser("a_n^-1", "[^ [_ a n] [neg 1]]");
     testParser("a_n^-2 b_m^-2", "[* [^ [_ a n] [neg 2]] [^ [_ b m] [neg 2]]]");
   });
+  describe("ellipses", () => {
+    testParser("a_0 + ... + a_n", "[+ [_ a 0] ... [_ a n]]");
+    testParser("1 + 2 + ...", "[+ 1 2 ...]");
+    testParser("a_0 * ... * a_n", "[* [_ a 0] ... [_ a n]]");
+    testParser("1 * 2 * ...", "[* 1 2 ...]");
+    testParser("a_0 = ... = a_n = ... = a_m", "[= [_ a 0] ... [_ a n] ... [_ a m]]");
+    testParser("a_0a_1 ... a_n", "[* [_ a 0] [_ a 1] ... [_ a n]]");
+  });
 });

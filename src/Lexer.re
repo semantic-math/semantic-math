@@ -14,6 +14,7 @@ type token_type =
   | RIGHT_PAREN
   | COMMA
   | UNDERSCORE
+  | ELLIPSES
   | IDENTIFIER(string)
   | NUMBER(string)
   | EOF;
@@ -46,6 +47,7 @@ let tokenTypeToString = tokenType =>
   | RIGHT_PAREN => ")"
   | COMMA => ","
   | UNDERSCORE => "_"
+  | ELLIPSES => "..."
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
   | EOF => "EOF"
@@ -56,7 +58,7 @@ let tokenToString = token =>
 
 let idSubRe = "[a-zA-Z][a-zA-Z0-9]*";
 
-let opSubRe = "<=|>=|!=|[\\<\\>\\!\\=\\(\\)\\+\\-\\/\\*\\^\\<\\>|\\,\\#\\_]";
+let opSubRe = "\\.\\.\\.|<=|>=|!=|[\\<\\>\\!\\=\\(\\)\\+\\-\\/\\*\\^\\<\\>|\\,\\#\\_]";
 
 let numSubRe = "\\d*\\.\\d+|\\d+\\.\\d*|\\d+";
 
@@ -115,6 +117,7 @@ let groupsToTokenType = groups =>
     | ">" => Some(GREATER_THAN)
     | "<=" => Some(LESS_THAN_OR_EQUAL)
     | ">=" => Some(GREATER_THAN_OR_EQUAL)
+    | "..." => Some(ELLIPSES)
     | _ => None
     }
   | _ => None

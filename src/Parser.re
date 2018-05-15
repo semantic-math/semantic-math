@@ -2,6 +2,7 @@ type node =
   | Apply(operator, list(node))
   | Identifier(string)
   | Number(string)
+  | Ellipses
 and operator =
   | Eq
   | Lt
@@ -127,6 +128,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | MINUS => getOpPrecedence(Add)
       | STAR => getOpPrecedence(Mul(`Explicit))
       | IDENTIFIER(_) => getOpPrecedence(Mul(`Implicit))
+      | ELLIPSES => getOpPrecedence(Mul(`Implicit))
       | LEFT_PAREN => getOpPrecedence(Mul(`Implicit))
       | CARET => getOpPrecedence(Exp)
       | UNDERSCORE => getOpPrecedence(Sub)
@@ -177,6 +179,7 @@ let parse = (tokens: array(Lexer.token)) => {
         | _ => Apply(Mul(`Implicit), children)
         };
       | IDENTIFIER(_) => parseNaryInfix(left, Mul(`Implicit))
+      | ELLIPSES => parseNaryInfix(left, Mul(`Implicit))
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Sub)
@@ -194,14 +197,14 @@ let parse = (tokens: array(Lexer.token)) => {
     let token = peek(0);
     switch (token.t) {
     /* there is no token for the operator for implicit multiplication by identifier */
-    | IDENTIFIER(_) => ()
+    | IDENTIFIER(_) | ELLIPSES => ()
     | _ => consume() |> ignore
     };
     let result = parseExpression(getOpPrecedence(op));
     switch (token.t, peek(0).t) {
     | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op)
     | (MINUS, PLUS | MINUS) => [Apply(Neg, [result])] @ parseNaryArgs(op)
-    | (NUMBER(_) | IDENTIFIER(_), IDENTIFIER(_)) =>
+    | (NUMBER(_) | IDENTIFIER(_) | ELLIPSES, IDENTIFIER(_) | ELLIPSES) =>
       [result] @ parseNaryArgs(op)
     | (a, b) when a == b => [result] @ parseNaryArgs(op)
     | (MINUS, _) => [Apply(Neg, [result])]
@@ -227,6 +230,7 @@ let parse = (tokens: array(Lexer.token)) => {
         | _ => Identifier(name)
         } */
       | NUMBER(value) => Number(value)
+      | ELLIPSES => Ellipses
       | LEFT_PAREN =>
         let expr = parseExpression(0);
         switch (consume().t) {
@@ -285,6 +289,7 @@ let rec nodeToString = node =>
     ++ "]"
   | Identifier(name) => name
   | Number(value) => value
+  | Ellipses => "..."
   }
 and opToString = op =>
   switch (op) {
