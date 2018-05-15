@@ -13,6 +13,7 @@ type token_type =
   | LEFT_PAREN
   | RIGHT_PAREN
   | COMMA
+  | UNDERSCORE
   | IDENTIFIER(string)
   | NUMBER(string)
   | EOF;
@@ -44,6 +45,7 @@ let tokenTypeToString = tokenType =>
   | LEFT_PAREN => "("
   | RIGHT_PAREN => ")"
   | COMMA => ","
+  | UNDERSCORE => "_"
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
   | EOF => "EOF"
@@ -108,6 +110,7 @@ let groupsToTokenType = groups =>
     | "(" => Some(LEFT_PAREN)
     | ")" => Some(RIGHT_PAREN)
     | "," => Some(COMMA)
+    | "_" => Some(UNDERSCORE)
     | "<" => Some(LESS_THAN)
     | ">" => Some(GREATER_THAN)
     | "<=" => Some(LESS_THAN_OR_EQUAL)

@@ -12,6 +12,7 @@ and operator =
   | Mul([ | `Implicit | `Explicit])
   | Div
   | Exp
+  | Sub 
   | Neg
   | Pos
   | Comma
@@ -41,6 +42,7 @@ let getOpPrecedence = op =>
    */
   | Mul(`Implicit) => 6
   | Exp => 9
+  | Sub => 9
   | Func(_) => 10
   };
 
@@ -121,6 +123,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | IDENTIFIER(_) => getOpPrecedence(Mul(`Implicit))
       | LEFT_PAREN => getOpPrecedence(Mul(`Implicit))
       | CARET => getOpPrecedence(Exp)
+      | UNDERSCORE => getOpPrecedence(Sub)
       | SLASH => getOpPrecedence(Div)
       | _ => 0
       }
@@ -170,6 +173,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | IDENTIFIER(_) => parseNaryInfix(left, Mul(`Implicit))
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
+      | UNDERSCORE => parseBinaryInfix(left, Sub)
       | RIGHT_PAREN => raise(Unhandled) /* unmatched right paren */
       | _ => left
       }
@@ -284,5 +288,6 @@ and opToString = op =>
   | Pos => "pos"
   | Div => "/"
   | Exp => "^"
+  | Sub => "_"
   | Func(name) => nodeToString(name)
   };

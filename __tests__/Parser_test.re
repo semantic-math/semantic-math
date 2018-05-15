@@ -112,4 +112,13 @@ describe("Parser", () => {
     testParser("sin^2(x)", "[[^ sin 2] x]");
     testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]");
   });
+  describe("subscripts", () => {
+    testParser("a_n", "[_ a n]");
+    testParser("a_(n-1)", "[_ a [+ n [neg 1]]]");
+    testParser("a_n_i", "[_ [_ a n] i]");
+    testParser("a_n^2", "[^ [_ a n] 2]");
+    testParser("a_n b_m", "[* [_ a n] [_ b m]]");
+    testParser("a_n^-1", "[^ [_ a n] [neg 1]]");
+    testParser("a_n^-2 b_m^-2", "[* [^ [_ a n] [neg 2]] [^ [_ b m] [neg 2]]]");
+  });
 });
