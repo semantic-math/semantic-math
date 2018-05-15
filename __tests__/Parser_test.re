@@ -20,12 +20,17 @@ describe("Parser", () => {
     testParser("a * b * c", "[* a b c]");
     testParser("abc", "[* a b c]");
     testParser("abcd", "[* a b c d]");
-    testParser("-ab - bc", "[+ [neg [* a b]] [neg [* b c]]]");
+    testParser("-ab - bc", "[+ [* [neg a] b] [neg [* b c]]]");
+    testParser("-ab + -bc", "[+ [* [neg a] b] [* [neg b] c]]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
+    testParser("abc - xyz", "[+ [* a b c] [neg [* x y z]]]");
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
     testParser("-(x)(y)(z)", "[neg [* x y z]]");
     testParser("2x", "[* 2 x]");
+    testParser("-2xy", "[* [neg 2] x y]");
+    testParser("1 - 2xy", "[+ 1 [neg [* 2 x y]]]");
+    testParser("1 + -2xy", "[+ 1 [* [neg 2] x y]]");
     testParser("2(x)", "[* 2 x]");
     testParser("2(x)(y) * 3(a)(b)", "[* [* 2 x y] [* 3 a b]]");
     testParser("123xy", "[* 123 x y]");
@@ -100,7 +105,9 @@ describe("Parser", () => {
     testParser("f(g(x),y)", "[f [g x] y]");
     testParser("f(x) = 2*x + 5", "[= [f x] [+ [* 2 x] 5]]");
     testParser("sin(x)", "[sin x]");
-    testParser("2sin(x)", "[sin x]"); /* We're not using the correct precedence for ( here */
+    testParser("2 * sin(x)", "[* 2 [sin x]]");
+    testParser("2 sin(x)", "[* 2 [sin x]]");
+    testParser("2x sin(x)", "[* 2 x [sin x]]");
     testParser("cos(x + pi/2)", "[cos [+ x [/ pi 2]]]");
     testParser("sin^2(x)", "[[^ sin 2] x]");
     testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]");

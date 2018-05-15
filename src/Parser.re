@@ -97,7 +97,10 @@ let parse = (tokens: array(Lexer.token)) => {
     );
   let peek = offset =>
     Lexer.(
-      if (index^ + offset < Array.length(tokens)) {
+      if (index^ + offset < 0) {
+        /* TODO: make a dummy token */
+        makeToken(EOF, "");
+      } else if (index^ + offset < Array.length(tokens)) {
         tokens[index^ + offset];
       } else {
         makeToken(EOF, "");
@@ -154,6 +157,12 @@ let parse = (tokens: array(Lexer.token)) => {
           switch (left, right) {
           | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
           | (Number(_), _) => Apply(Mul(`Implicit), children)
+          | (Apply(Mul(`Implicit), factors), _) => 
+            switch (List.rev(factors)) {
+            /* Parse 2sin(x) to [* 2 [sin x]] */
+            | [hd, ...tl] => Apply(Mul(`Implicit), List.rev([Apply(Func(hd), [right])] @ tl))
+            | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
+            }
           | _ => Apply(Func(left), [right])
           }
         | _ => Apply(Mul(`Implicit), children)
@@ -194,11 +203,30 @@ let parse = (tokens: array(Lexer.token)) => {
       switch (consume().t) {
       | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
       | IDENTIFIER(name) => Identifier(name)
+        /***
+         * Check if the token before the first identifier was a negative sign.
+         * If it is, and the next token is an identifier, they we have something
+         * like -abc.  We want to parse this is [neg [* a b c]].
+         */
+        /* switch (peek(-2).t, peek(0).t) {
+        | (MINUS, IDENTIFIER(_)) =>
+          Apply(
+            Mul(`Implicit),
+            [Identifier(name)] @ parseMulByIdentifier(),
+          )
+        | _ => Identifier(name)
+        } */
       | NUMBER(value) => Number(value)
       | LEFT_PAREN =>
         let expr = parseExpression(0);
         switch (consume().t) {
-        | RIGHT_PAREN => expr
+        | RIGHT_PAREN =>
+          switch (peek(0).t) {
+          | LEFT_PAREN =>
+            consume() |> ignore;
+            Apply(Mul(`Implicit), [expr] @ parseMulByParens());
+          | _ => expr
+          }
         | _ => raise(Unhandled) /* unmatched left paren */
         };
       | _ => raise(Unhandled) /* unexpected token */
@@ -216,7 +244,14 @@ let parse = (tokens: array(Lexer.token)) => {
       }
     | _ => raise(Unhandled) /* unmatched left paren */
     };
-  };
+  }
+  and parseMulByIdentifier = () =>
+    switch (peek(0).t) {
+    | IDENTIFIER(name) =>
+      consume() |> ignore;
+      [Identifier(name)] @ parseMulByIdentifier();
+    | _ => []
+    };
   parseExpression(0);
 };
 
