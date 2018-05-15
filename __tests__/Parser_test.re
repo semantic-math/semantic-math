@@ -1,16 +1,24 @@
 open Jest;
+open Expect;
+
+let testParser = (expr, tree) =>
+test(
+  expr ++ " parses as " ++ tree,
+  () => {
+    let tokens = Lexer.lex(expr);
+    let ast = Parser.parse(tokens);
+    expect(Parser.nodeToString(ast)) |> toBe(tree);
+  },
+);
+
+let testError = (expr, exc) =>
+test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
+  expect(() =>
+    Parser.parse(Lexer.lex(expr))
+  ) |> toThrowException(exc)
+);
 
 describe("Parser", () => {
-  open Expect;
-  let testParser = (expr, tree) =>
-    test(
-      expr ++ " parses as " ++ tree,
-      () => {
-        let tokens = Lexer.lex(expr);
-        let ast = Parser.parse(tokens);
-        expect(Parser.nodeToString(ast)) |> toBe(tree);
-      },
-    );
   describe("order of operations", () => {
     testParser("1+2+3", "[+ 1 2 3]");
     testParser("1+2*3+4*5+6", "[+ 1 [* 2 3] [* 4 5] 6]");
@@ -93,12 +101,14 @@ describe("Parser", () => {
     /* What should this case parse as */
     /* testParser("a > b < c", ""); */
   });
-  /* describe("errors", () => {
-    testError("(x+1", Parser.Unmatched_left_paren);
-    testError("x+1)", Parser.Unmatched_right_paren);
-    testError("1 + 2 3", Parser.Missing_operator);
-    testError("1 + 2 + +", Parser.Missing_operand);
-  }); */
+  describe("errors", () => {
+    testError("(x+1", Parser.UnmatchedLeftParen);
+    testError("(x+1)(y+2", Parser.UnmatchedLeftParen);
+    testError("x+1)", Parser.UnmatchedRightParen);
+    testError("x+1)(y+2)", Parser.UnmatchedRightParen);
+    testError("1 + 2 3", Parser.UnexpectedToken);
+    testError("1 + 2 + +", Parser.UnexpectedToken);
+  });
   describe("function", () => {
     testParser("f(x)", "[f x]");
     testParser("f(x, y)", "[f x y]");

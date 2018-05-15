@@ -48,6 +48,12 @@ let getOpPrecedence = op =>
 
 exception Unhandled;
 
+exception UnmatchedLeftParen;
+
+exception UnmatchedRightParen;
+
+exception UnexpectedToken;
+
 let makeToken = (t, value) =>
   Lexer.{
     t,
@@ -174,7 +180,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Sub)
-      | RIGHT_PAREN => raise(Unhandled) /* unmatched right paren */
+      | RIGHT_PAREN => raise(UnmatchedRightParen)
       | _ => left
       }
     )
@@ -231,9 +237,9 @@ let parse = (tokens: array(Lexer.token)) => {
             Apply(Mul(`Implicit), [expr] @ parseMulByParens());
           | _ => expr
           }
-        | _ => raise(Unhandled) /* unmatched left paren */
+        | _ => raise(UnmatchedLeftParen)
         };
-      | _ => raise(Unhandled) /* unexpected token */
+      | _ => raise(UnexpectedToken)
       }
     )
   and parseMulByParens = () => {
@@ -246,7 +252,7 @@ let parse = (tokens: array(Lexer.token)) => {
         [expr] @ parseMulByParens();
       | _ => [expr]
       }
-    | _ => raise(Unhandled) /* unmatched left paren */
+    | _ => raise(UnmatchedLeftParen)
     };
   }
   and parseMulByIdentifier = () =>
@@ -256,7 +262,13 @@ let parse = (tokens: array(Lexer.token)) => {
       [Identifier(name)] @ parseMulByIdentifier();
     | _ => []
     };
-  parseExpression(0);
+  let result = parseExpression(0);
+  switch (peek(0).t) {
+  | RIGHT_PAREN => raise(UnmatchedRightParen);
+  | t when t != EOF => raise(UnexpectedToken); /* unexpected token */
+  | _ => ()
+  };
+  result;
 };
 
 let rec nodeToString = node =>
