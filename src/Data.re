@@ -23,6 +23,7 @@ let wellKnownIdentifiers = [
   "acsc",
   "acot",
   "sqrt",
+  "log",
 ];
 
 let funcForName = name => 
