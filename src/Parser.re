@@ -18,6 +18,7 @@ and operator =
   | Pos
   | Comma
   | Fact
+  | Prime
   | Func(node);
 
 let getOpPrecedence = op =>
@@ -43,6 +44,7 @@ let getOpPrecedence = op =>
   | Neg => 7
   | Pos => 7
   | Fact => 8
+  | Prime => 8
   | Exp => 9
   | Sub => 9
   | Func(_) => 10
@@ -135,6 +137,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | UNDERSCORE => getOpPrecedence(Sub)
       | SLASH => getOpPrecedence(Div)
       | BANG => getOpPrecedence(Fact)
+      | SINGLE_QUOTE => getOpPrecedence(Prime)
       | _ => 0
       }
     );
@@ -186,6 +189,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Sub)
       | BANG => parsePostfix(left, Fact)
+      | SINGLE_QUOTE => parsePostfix(left, Prime)
       | RIGHT_PAREN => raise(UnmatchedRightParen)
       | _ => left
       }
@@ -216,9 +220,7 @@ let parse = (tokens: array(Lexer.token)) => {
       };
     switch (op, peek(0).t) {
     | (Add, PLUS | MINUS) => [result] @ parseNaryArgs(op)
-    | (Add, _) => [result]
-    | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) =>
-    [result] @ parseNaryArgs(op)
+    | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) => [result] @ parseNaryArgs(op)
     | (_, t) when token.t == t => [result] @ parseNaryArgs(op)
     | _ => [result]
     };
@@ -300,5 +302,6 @@ and opToString = op =>
   | Exp => "^"
   | Sub => "_"
   | Fact => "!"
+  | Prime => "'"
   | Func(name) => nodeToString(name)
   };

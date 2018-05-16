@@ -116,6 +116,7 @@ describe("Parser", () => {
     testParser("sin^-1 (x)", "[[^ sin [neg 1]] x]");
     testParser("log_n(x)", "[[_ log n] x]");
     testParser("log_10(x)", "[[_ log 10] x]");
+    testParser("f(x)g(x)", "[* [f x] [g x]]");
   });
   describe("subscripts", () => {
     testParser("a_n", "[_ a n]");
@@ -146,6 +147,13 @@ describe("Parser", () => {
     testParser("n!(n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
     testParser("n!!", "[! [! n]]");
     testParser("n!m!/(n-1)!", "[/ [* [! n] [! m]] [! [+ n [neg 1]]]]");
+  });
+  describe("prime", () => {
+    testParser("f'", "[' f]");
+    testParser("f'(x)", "[[' f] x]");
+    testParser("f'g + fg'", "[+ [* [' f] g] [* f [' g]]]");
+    testParser("f'(x)g(x) + f(x)g'(x)", "[+ [* [[' f] x] [g x]] [* [f x] [[' g] x]]]");
+    testParser("f''(x)", "[[' [' f]] x]");
   });
   describe("errors", () => {
     testError("(x+1", Parser.UnmatchedLeftParen);

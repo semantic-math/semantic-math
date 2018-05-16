@@ -16,6 +16,7 @@ type token_type =
   | UNDERSCORE
   | ELLIPSES
   | BANG
+  | SINGLE_QUOTE
   | IDENTIFIER(string)
   | NUMBER(string)
   | EOF;
@@ -50,6 +51,7 @@ let tokenTypeToString = tokenType =>
   | UNDERSCORE => "_"
   | ELLIPSES => "..."
   | BANG => "!"
+  | SINGLE_QUOTE => "'"
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
   | EOF => "EOF"
@@ -60,7 +62,7 @@ let tokenToString = token =>
 
 let idSubRe = "[a-zA-Z][a-zA-Z0-9]*";
 
-let opSubRe = "\\.\\.\\.|<=|>=|!=|[\\<\\>\\!\\=\\(\\)\\+\\-\\/\\*\\^\\<\\>|\\,\\#\\_]";
+let opSubRe = "\\.\\.\\.|<=|>=|!=|[\\<\\>\\!\\=\\(\\)\\+\\-\\/\\*\\^\\<\\>|\\,\\#\\_\\']";
 
 let numSubRe = "\\d*\\.\\d+|\\d+\\.\\d*|\\d+";
 
@@ -121,6 +123,7 @@ let groupsToTokenType = groups =>
     | ">=" => Some(GREATER_THAN_OR_EQUAL)
     | "..." => Some(ELLIPSES)
     | "!" => Some(BANG)
+    | "'" => Some(SINGLE_QUOTE)
     | _ => None
     }
   | _ => None
