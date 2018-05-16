@@ -202,21 +202,25 @@ let parse = (tokens: array(Lexer.token)) => {
   and parseNaryArgs = op => {
     open Lexer;
     let token = peek(0);
-    switch (token.t) {
-    /* there is no token for the operator for implicit multiplication by identifier */
-    | IDENTIFIER(_)
-    | ELLIPSES => ()
-    | _ => consume() |> ignore
-    };
-    let result = parseExpression(getOpPrecedence(op));
-    switch (token.t, peek(0).t) {
-    | (PLUS, PLUS | MINUS) => [result] @ parseNaryArgs(op)
-    | (MINUS, PLUS | MINUS) => [Apply(Neg, [result])] @ parseNaryArgs(op)
-    | (NUMBER(_) | IDENTIFIER(_) | ELLIPSES, IDENTIFIER(_) | ELLIPSES) =>
-      [result] @ parseNaryArgs(op)
-    | (a, b) when a == b => [result] @ parseNaryArgs(op)
-    | (MINUS, _) => [Apply(Neg, [result])]
-    | (_, _) => [result]
+    let result =
+      switch (token.t) {
+      /* there is no token for the operator for implicit multiplication */
+      | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
+      | ELLIPSES => parseExpression(getOpPrecedence(op))
+      | MINUS =>
+        consume() |> ignore;
+        Apply(Neg, [parseExpression(getOpPrecedence(op))]);
+      | _ =>
+        consume() |> ignore;
+        parseExpression(getOpPrecedence(op));
+      };
+    switch (op, peek(0).t) {
+    | (Add, PLUS | MINUS) => [result] @ parseNaryArgs(op)
+    | (Add, _) => [result]
+    | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) =>
+    [result] @ parseNaryArgs(op)
+    | (_, t) when token.t == t => [result] @ parseNaryArgs(op)
+    | _ => [result]
     };
   }
   and parseMulByParens = () => {
