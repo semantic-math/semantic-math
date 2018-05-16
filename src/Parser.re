@@ -13,10 +13,11 @@ and operator =
   | Mul([ | `Implicit | `Explicit])
   | Div
   | Exp
-  | Sub 
+  | Sub
   | Neg
   | Pos
   | Comma
+  | Fact
   | Func(node);
 
 let getOpPrecedence = op =>
@@ -34,14 +35,15 @@ let getOpPrecedence = op =>
    * multiplication of fractions e.g. x/y * a/b should parse as [* [/ x y] [/ a b]]
    */
   | Div => 5
-  | Neg => 7
-  | Pos => 7
   /***
    * We give implicit multiplication higher precedence than division to support
    * parsing expressions like ab / cd as [/ [* a b] [* c d]] and higher than
    * Pos/Neg prefixes to support -(a)(b)(c) parsing as [neg [* a b c]].
    */
   | Mul(`Implicit) => 6
+  | Neg => 7
+  | Pos => 7
+  | Fact => 8
   | Exp => 9
   | Sub => 9
   | Func(_) => 10
@@ -133,6 +135,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | CARET => getOpPrecedence(Exp)
       | UNDERSCORE => getOpPrecedence(Sub)
       | SLASH => getOpPrecedence(Div)
+      | BANG => getOpPrecedence(Fact)
       | _ => 0
       }
     );
@@ -161,17 +164,21 @@ let parse = (tokens: array(Lexer.token)) => {
       | MINUS => parseNaryInfix(left, Add)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
       | LEFT_PAREN =>
-        consume() |> ignore;
         let children = [left] @ parseMulByParens();
         switch (children) {
         | [left, right] =>
           switch (left, right) {
           | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
           | (Number(_), _) => Apply(Mul(`Implicit), children)
-          | (Apply(Mul(`Implicit), factors), _) => 
+          | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
+          | (Apply(Mul(`Implicit), factors), _) =>
             switch (List.rev(factors)) {
             /* Parse 2sin(x) to [* 2 [sin x]] */
-            | [hd, ...tl] => Apply(Mul(`Implicit), List.rev([Apply(Func(hd), [right])] @ tl))
+            | [hd, ...tl] =>
+              Apply(
+                Mul(`Implicit),
+                List.rev([Apply(Func(hd), [right])] @ tl),
+              )
             | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
             }
           | _ => Apply(Func(left), [right])
@@ -183,6 +190,9 @@ let parse = (tokens: array(Lexer.token)) => {
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Sub)
+      | BANG =>
+        consume() |> ignore;
+        Apply(Fact, [left]);
       | RIGHT_PAREN => raise(UnmatchedRightParen)
       | _ => left
       }
@@ -197,7 +207,8 @@ let parse = (tokens: array(Lexer.token)) => {
     let token = peek(0);
     switch (token.t) {
     /* there is no token for the operator for implicit multiplication by identifier */
-    | IDENTIFIER(_) | ELLIPSES => ()
+    | IDENTIFIER(_)
+    | ELLIPSES => ()
     | _ => consume() |> ignore
     };
     let result = parseExpression(getOpPrecedence(op));
@@ -216,47 +227,35 @@ let parse = (tokens: array(Lexer.token)) => {
       switch (consume().t) {
       | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
       | IDENTIFIER(name) => Identifier(name)
-        /***
-         * Check if the token before the first identifier was a negative sign.
-         * If it is, and the next token is an identifier, they we have something
-         * like -abc.  We want to parse this is [neg [* a b c]].
-         */
-        /* switch (peek(-2).t, peek(0).t) {
-        | (MINUS, IDENTIFIER(_)) =>
-          Apply(
-            Mul(`Implicit),
-            [Identifier(name)] @ parseMulByIdentifier(),
-          )
-        | _ => Identifier(name)
-        } */
+      /***
+       * Check if the token before the first identifier was a negative sign.
+       * If it is, and the next token is an identifier, they we have something
+       * like -abc.  We want to parse this is [neg [* a b c]].
+       */
+      /* switch (peek(-2).t, peek(0).t) {
+         | (MINUS, IDENTIFIER(_)) =>
+           Apply(
+             Mul(`Implicit),
+             [Identifier(name)] @ parseMulByIdentifier(),
+           )
+         | _ => Identifier(name)
+         } */
       | NUMBER(value) => Number(value)
       | ELLIPSES => Ellipses
       | LEFT_PAREN =>
         let expr = parseExpression(0);
         switch (consume().t) {
-        | RIGHT_PAREN =>
-          switch (peek(0).t) {
-          | LEFT_PAREN =>
-            consume() |> ignore;
-            Apply(Mul(`Implicit), [expr] @ parseMulByParens());
-          | _ => expr
-          }
+        | RIGHT_PAREN => expr
         | _ => raise(UnmatchedLeftParen)
         };
       | _ => raise(UnexpectedToken)
       }
     )
   and parseMulByParens = () => {
-    let expr = parseExpression(0);
-    switch (consume().t) {
-    | RIGHT_PAREN =>
-      switch (peek(0).t) {
-      | LEFT_PAREN =>
-        consume() |> ignore;
-        [expr] @ parseMulByParens();
-      | _ => [expr]
-      }
-    | _ => raise(UnmatchedLeftParen)
+    let expr = parseExpression(getOpPrecedence(Mul(`Implicit)));
+    switch (peek(0).t) {
+    | LEFT_PAREN => [expr] @ parseMulByParens()
+    | _ => [expr]
     };
   }
   and parseMulByIdentifier = () =>
@@ -268,8 +267,8 @@ let parse = (tokens: array(Lexer.token)) => {
     };
   let result = parseExpression(0);
   switch (peek(0).t) {
-  | RIGHT_PAREN => raise(UnmatchedRightParen);
-  | t when t != EOF => raise(UnexpectedToken); /* unexpected token */
+  | RIGHT_PAREN => raise(UnmatchedRightParen)
+  | t when t != EOF => raise(UnexpectedToken) /* unexpected token */
   | _ => ()
   };
   result;
@@ -306,5 +305,6 @@ and opToString = op =>
   | Div => "/"
   | Exp => "^"
   | Sub => "_"
+  | Fact => "!"
   | Func(name) => nodeToString(name)
   };

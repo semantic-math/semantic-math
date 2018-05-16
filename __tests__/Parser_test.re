@@ -34,12 +34,13 @@ describe("Parser", () => {
     testParser("abc - xyz", "[+ [* a b c] [neg [* x y z]]]");
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
-    testParser("-(x)(y)(z)", "[neg [* x y z]]");
+    testParser("-(x)(y)(z)", "[* [neg x] y z]");
     testParser("2x", "[* 2 x]");
     testParser("-2xy", "[* [neg 2] x y]");
     testParser("1 - 2xy", "[+ 1 [neg [* 2 x y]]]");
     testParser("1 + -2xy", "[+ 1 [* [neg 2] x y]]");
     testParser("2(x)", "[* 2 x]");
+    testParser("(2)(x)", "[* 2 x]");
     testParser("2(x)(y) * 3(a)(b)", "[* [* 2 x y] [* 3 a b]]");
     testParser("123xy", "[* 123 x y]");
     testParser("x^-1y^-1", "[* [^ x [neg 1]] [^ y [neg 1]]]");
@@ -132,6 +133,18 @@ describe("Parser", () => {
     testParser("1 * 2 * ...", "[* 1 2 ...]");
     testParser("a_0 = ... = a_n = ... = a_m", "[= [_ a 0] ... [_ a n] ... [_ a m]]");
     testParser("a_0a_1 ... a_n", "[* [_ a 0] [_ a 1] ... [_ a n]]");
+  });
+  describe("factorial", () => {
+    testParser("0!", "[! 0]");
+    testParser("n!", "[! n]");
+    testParser("a_n!", "[! [_ a n]]");
+    testParser("2n!", "[* 2 [! n]]");
+    testParser("n!m!", "[* [! n] [! m]]");
+    testParser("(n-1)!", "[! [+ n [neg 1]]]");
+    testParser("n! * (n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
+    testParser("n!(n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
+    testParser("n!!", "[! [! n]]");
+    testParser("n!m!/(n-1)!", "[/ [* [! n] [! m]] [! [+ n [neg 1]]]]");
   });
   describe("errors", () => {
     testError("(x+1", Parser.UnmatchedLeftParen);

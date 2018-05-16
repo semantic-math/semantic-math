@@ -15,6 +15,7 @@ type token_type =
   | COMMA
   | UNDERSCORE
   | ELLIPSES
+  | BANG
   | IDENTIFIER(string)
   | NUMBER(string)
   | EOF;
@@ -48,6 +49,7 @@ let tokenTypeToString = tokenType =>
   | COMMA => ","
   | UNDERSCORE => "_"
   | ELLIPSES => "..."
+  | BANG => "!"
   | IDENTIFIER(name) => {j|IDENTIFIER($name)|j}
   | NUMBER(value) => {j|NUMBER($value)|j}
   | EOF => "EOF"
@@ -118,6 +120,7 @@ let groupsToTokenType = groups =>
     | "<=" => Some(LESS_THAN_OR_EQUAL)
     | ">=" => Some(GREATER_THAN_OR_EQUAL)
     | "..." => Some(ELLIPSES)
+    | "!" => Some(BANG)
     | _ => None
     }
   | _ => None
