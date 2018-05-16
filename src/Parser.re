@@ -37,8 +37,7 @@ let getOpPrecedence = op =>
   | Div => 5
   /***
    * We give implicit multiplication higher precedence than division to support
-   * parsing expressions like ab / cd as [/ [* a b] [* c d]] and higher than
-   * Pos/Neg prefixes to support -(a)(b)(c) parsing as [neg [* a b c]].
+   * parsing expressions like ab / cd as [/ [* a b] [* c d]].
    */
   | Mul(`Implicit) => 6
   | Neg => 7
@@ -180,51 +179,26 @@ let parse = (tokens: array(Lexer.token)) => {
       | MINUS => parseNaryInfix(left, Add)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
       | LEFT_PAREN =>
-        let prevToken = peek(-1);
-        let children = [left] @ parseMulByParens();
-        switch (children) {
-        | [left, right] =>
-          switch (left, right) {
-          | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
-          | (Number(_), _) => Apply(Mul(`Implicit), children)
-          | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
-          | (Apply(Mul(`Implicit), factors), _) =>
-            switch (List.rev(factors)) {
-            /* Parse 2sin(x) to [* 2 [sin x]] */
-            | [hd, ...tl] =>
-              Apply(
-                Mul(`Implicit),
-                List.rev([Apply(Func(hd), [right])] @ tl),
-              )
-            | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
-            }
-          | _ => 
-            switch (prevToken.t) {
-            /* parse (a)(b) as multiplication for now */
-            /* TODO: allow (f + g)(x) to be parsed as a function */
-            | RIGHT_PAREN => Apply(Mul(`Implicit), children)
-            | _ => Apply(Func(left), [right])
-            }
-          }
-        | _ => Apply(Mul(`Implicit), children)
-        };
+        postProcessMulByParens(peek(-1), [left] @ parseMulByParens())
       | IDENTIFIER(_) => parseNaryInfix(left, Mul(`Implicit))
       | ELLIPSES => parseNaryInfix(left, Mul(`Implicit))
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Sub)
-      | BANG =>
-        consume() |> ignore;
-        Apply(Fact, [left]);
+      | BANG => parsePostfix(left, Fact)
       | RIGHT_PAREN => raise(UnmatchedRightParen)
       | _ => left
       }
     )
-  and parseNaryInfix = (left, op) => Apply(op, [left] @ parseNaryArgs(op))
   and parseBinaryInfix = (left, op) => {
     consume() |> ignore;
     Apply(op, [left, parseExpression(getOpPrecedence(op))]);
   }
+  and parsePostfix = (left, op) => {
+    consume() |> ignore;
+    Apply(op, [left]);
+  }
+  and parseNaryInfix = (left, op) => Apply(op, [left] @ parseNaryArgs(op))
   and parseNaryArgs = op => {
     open Lexer;
     let token = peek(0);
@@ -248,10 +222,38 @@ let parse = (tokens: array(Lexer.token)) => {
   and parseMulByParens = () => {
     let expr = parseExpression(getOpPrecedence(Mul(`Implicit)));
     switch (peek(0).t) {
-    | LEFT_PAREN | ELLIPSES => [expr] @ parseMulByParens()
+    | LEFT_PAREN
+    | ELLIPSES => [expr] @ parseMulByParens()
     | _ => [expr]
     };
-  };
+  }
+  and postProcessMulByParens = (prevToken, children) =>
+    switch (children) {
+    | [left, right] =>
+      switch (left, right) {
+      | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
+      | (Number(_), _) => Apply(Mul(`Implicit), children)
+      | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
+      | (Apply(Mul(`Implicit), factors), _) =>
+        switch (List.rev(factors)) {
+        /* Parse 2sin(x) to [* 2 [sin x]] */
+        | [hd, ...tl] =>
+          Apply(
+            Mul(`Implicit),
+            List.rev([Apply(Func(hd), [right])] @ tl),
+          )
+        | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
+        }
+      | _ =>
+        switch (prevToken.t) {
+        /* parse (a)(b) as multiplication for now */
+        /* TODO: allow (f + g)(x) to be parsed as a function */
+        | RIGHT_PAREN => Apply(Mul(`Implicit), children)
+        | _ => Apply(Func(left), [right])
+        }
+      }
+    | _ => Apply(Mul(`Implicit), children)
+    };
   /* start parsing */
   let result = parseExpression(0);
   switch (peek(0).t) {
