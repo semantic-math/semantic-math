@@ -147,6 +147,22 @@ let parse = (tokens: array(Lexer.token)) => {
     let result = left^;
     result;
   }
+  and parsePrefix = () =>
+    Lexer.(
+      switch (consume().t) {
+      | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
+      | IDENTIFIER(name) => Identifier(name)
+      | NUMBER(value) => Number(value)
+      | ELLIPSES => Ellipses
+      | LEFT_PAREN =>
+        let expr = parseExpression(0);
+        switch (consume().t) {
+        | RIGHT_PAREN => expr
+        | _ => raise(UnmatchedLeftParen)
+        };
+      | _ => raise(UnexpectedToken)
+      }
+    )
   and parseInfix = left =>
     Lexer.(
       switch (peek(0).t) {
@@ -164,6 +180,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | MINUS => parseNaryInfix(left, Add)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
       | LEFT_PAREN =>
+        let prevToken = peek(-1);
         let children = [left] @ parseMulByParens();
         switch (children) {
         | [left, right] =>
@@ -181,7 +198,13 @@ let parse = (tokens: array(Lexer.token)) => {
               )
             | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
             }
-          | _ => Apply(Func(left), [right])
+          | _ => 
+            switch (prevToken.t) {
+            /* parse (a)(b) as multiplication for now */
+            /* TODO: allow (f + g)(x) to be parsed as a function */
+            | RIGHT_PAREN => Apply(Mul(`Implicit), children)
+            | _ => Apply(Func(left), [right])
+            }
           }
         | _ => Apply(Mul(`Implicit), children)
         };
@@ -222,49 +245,14 @@ let parse = (tokens: array(Lexer.token)) => {
     | (_, _) => [result]
     };
   }
-  and parsePrefix = () =>
-    Lexer.(
-      switch (consume().t) {
-      | MINUS => Apply(Neg, [parseExpression(getOpPrecedence(Neg))])
-      | IDENTIFIER(name) => Identifier(name)
-      /***
-       * Check if the token before the first identifier was a negative sign.
-       * If it is, and the next token is an identifier, they we have something
-       * like -abc.  We want to parse this is [neg [* a b c]].
-       */
-      /* switch (peek(-2).t, peek(0).t) {
-         | (MINUS, IDENTIFIER(_)) =>
-           Apply(
-             Mul(`Implicit),
-             [Identifier(name)] @ parseMulByIdentifier(),
-           )
-         | _ => Identifier(name)
-         } */
-      | NUMBER(value) => Number(value)
-      | ELLIPSES => Ellipses
-      | LEFT_PAREN =>
-        let expr = parseExpression(0);
-        switch (consume().t) {
-        | RIGHT_PAREN => expr
-        | _ => raise(UnmatchedLeftParen)
-        };
-      | _ => raise(UnexpectedToken)
-      }
-    )
   and parseMulByParens = () => {
     let expr = parseExpression(getOpPrecedence(Mul(`Implicit)));
     switch (peek(0).t) {
-    | LEFT_PAREN => [expr] @ parseMulByParens()
+    | LEFT_PAREN | ELLIPSES => [expr] @ parseMulByParens()
     | _ => [expr]
     };
-  }
-  and parseMulByIdentifier = () =>
-    switch (peek(0).t) {
-    | IDENTIFIER(name) =>
-      consume() |> ignore;
-      [Identifier(name)] @ parseMulByIdentifier();
-    | _ => []
-    };
+  };
+  /* start parsing */
   let result = parseExpression(0);
   switch (peek(0).t) {
   | RIGHT_PAREN => raise(UnmatchedRightParen)
