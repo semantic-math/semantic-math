@@ -220,7 +220,8 @@ let parse = (tokens: array(Lexer.token)) => {
       };
     switch (op, peek(0).t) {
     | (Add, PLUS | MINUS) => [result] @ parseNaryArgs(op)
-    | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) => [result] @ parseNaryArgs(op)
+    | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) =>
+      [result] @ parseNaryArgs(op)
     | (_, t) when token.t == t => [result] @ parseNaryArgs(op)
     | _ => [result]
     };
@@ -241,8 +242,8 @@ let parse = (tokens: array(Lexer.token)) => {
       | (Number(_), _) => Apply(Mul(`Implicit), children)
       | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
       | (Apply(Mul(`Implicit), factors), _) =>
+        /* Parse 2x sin(x) to [* 2 x [sin x]] */
         switch (List.rev(factors)) {
-        /* Parse 2sin(x) to [* 2 [sin x]] */
         | [hd, ...tl] =>
           Apply(
             Mul(`Implicit),
@@ -251,9 +252,9 @@ let parse = (tokens: array(Lexer.token)) => {
         | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
         }
       | _ =>
-        switch (prevToken.t) {
         /* parse (a)(b) as multiplication for now */
         /* TODO: allow (f + g)(x) to be parsed as a function */
+        switch (prevToken.t) {
         | RIGHT_PAREN => Apply(Mul(`Implicit), children)
         | _ => Apply(Func(left), [right])
         }
@@ -305,3 +306,47 @@ and opToString = op =>
   | Prime => "'"
   | Func(name) => nodeToString(name)
   };
+
+let rec nodeToJson = node =>
+  Json.Encode.(
+    switch (node) {
+    | Apply(op, args) =>
+      object_([
+        ("type", string("Apply")),
+        ("op", opToJson(op)),
+        ("args", jsonArray(Array.map(nodeToJson, Array.of_list(args)))),
+      ])
+    | Number(value) =>
+      object_([("type", string("Number")), ("value", string(value))])
+    | Identifier(name) =>
+      object_([("type", string("Identifier")), ("name", string(name))])
+    | Ellipses => object_([("type", string("Ellipses"))])
+    }
+  )
+and opToJson = op : Js.Json.t =>
+  Json.Encode.(
+    switch (op) {
+    | Comma => string("comma")
+    | Eq => string("eq")
+    | Lt => string("lt")
+    | Gt => string("gt")
+    | Lte => string("lte")
+    | Gte => string("gte")
+    | Add => string("add")
+    | Mul(_) => string("mul")
+    | Neg => string("neg")
+    | Pos => string("pos")
+    | Div => string("div")
+    | Exp => string("exp")
+    | Sub => string("sub")
+    | Fact => string("fact")
+    | Prime => string("prime")
+    | Func(name) => nodeToJson(name)
+    }
+  );
+
+
+type payload = {. "name": string}
+and barload = {. "foo": payload};
+
+let foobar = {"foo": {"name": "bar"}};

@@ -146,7 +146,8 @@ describe("Parser", () => {
     testParser("n! * (n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
     testParser("n!(n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
     testParser("n!!", "[! [! n]]");
-    testParser("n!m!/(n-1)!", "[/ [* [! n] [! m]] [! [+ n [neg 1]]]]");
+    testParser("n!m! / (n-1)!", "[/ [* [! n] [! m]] [! [+ n [neg 1]]]]");
+    testParser("n! / (n-k)!k!", "[/ [! n] [* [! [+ n [neg k]]] [! k]]]");
   });
   describe("prime", () => {
     testParser("f'", "[' f]");

@@ -7,3 +7,5 @@ tokens |> Array.map(Lexer.tokenToString) |> Array.iter(Js.log);
 let result = Parser.parse(tokens);
 
 Js.log(Parser.nodeToString(result));
+
+Js.log(Json.stringify(Parser.nodeToJson(result)));
