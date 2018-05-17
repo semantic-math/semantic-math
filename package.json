@@ -5,7 +5,9 @@
     "build": "bsb -make-world",
     "start": "bsb -make-world -w",
     "clean": "bsb -clean-world",
-    "test": "jest"
+    "test": "jest",
+    "lexer": "browserify lib/js/src/Lexer.bs.js -o dist/lexer.js -s Lexer",
+    "parser": "browserify lib/js/src/Parser.bs.js -o dist/parser.js -s Parser"
   },
   "keywords": [
     "BuckleScript"
@@ -14,6 +16,7 @@
   "license": "MIT",
   "devDependencies": {
     "@glennsl/bs-jest": "^0.4.2",
+    "browserify": "^16.2.2",
     "bs-platform": "^3.0.0"
   },
   "dependencies": {
