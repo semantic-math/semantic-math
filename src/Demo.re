@@ -1,4 +1,4 @@
-let str = "a^2 * b^2 * c^2^x";
+let str = "a^2 + b^2 = c^2";
 
 let tokens = Lexer.lex(str);
 

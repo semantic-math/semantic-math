@@ -18,7 +18,7 @@ test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
   ) |> toThrowException(exc)
 );
 
-describe("Parser", () => {
+describe("MathParser", () => {
   describe("order of operations", () => {
     testParser("1+2+3", "[+ 1 2 3]");
     testParser("1+2*3+4*5+6", "[+ 1 [* 2 3] [* 4 5] 6]");

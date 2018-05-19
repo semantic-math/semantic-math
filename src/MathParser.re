@@ -161,6 +161,10 @@ let infixParseletMap =
 
 let parser = Parser.make(prefixParseletMap, infixParseletMap);
 
+/**
+ * Split any identifiers that aren't well-known identifiers into individual
+ * letters.
+ */
 let rec preprocessTokens = (tokens: list(Token.t)) =>
   switch (tokens) {
   | [hd, ...tl] =>
