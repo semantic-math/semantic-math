@@ -10,10 +10,11 @@ and operator =
   | Lte
   | Gte
   | Add
+  | Sub
   | Mul([ | `Implicit | `Explicit])
   | Div
   | Exp
-  | Sub
+  | Subscript
   | Neg
   | Pos
   | Comma
@@ -30,24 +31,25 @@ let getOpPrecedence = op =>
   | Lte => 2
   | Gte => 2
   | Add => 3
-  | Mul(`Explicit) => 4
+  | Sub => 4
+  | Mul(`Explicit) => 5
   /***
    * We allow division to have higher precedence so that it's easy to write
    * multiplication of fractions e.g. x/y * a/b should parse as [* [/ x y] [/ a b]]
    */
-  | Div => 5
+  | Div => 6
   /***
    * We give implicit multiplication higher precedence than division to support
    * parsing expressions like ab / cd as [/ [* a b] [* c d]].
    */
-  | Mul(`Implicit) => 6
-  | Neg => 7
-  | Pos => 7
-  | Fact => 8
-  | Prime => 8
-  | Exp => 9
-  | Sub => 9
-  | Func(_) => 10
+  | Mul(`Implicit) => 7
+  | Neg => 8
+  | Pos => 8
+  | Fact => 9
+  | Prime => 9
+  | Exp => 10
+  | Subscript => 10
+  | Func(_) => 11
   };
 
 exception Unhandled;
@@ -128,13 +130,13 @@ let parse = (tokens: array(Lexer.token)) => {
       | LESS_THAN_OR_EQUAL => getOpPrecedence(Lte)
       | GREATER_THAN_OR_EQUAL => getOpPrecedence(Gte)
       | PLUS => getOpPrecedence(Add)
-      | MINUS => getOpPrecedence(Add)
+      | MINUS => getOpPrecedence(Sub)
       | STAR => getOpPrecedence(Mul(`Explicit))
       | IDENTIFIER(_) => getOpPrecedence(Mul(`Implicit))
       | ELLIPSES => getOpPrecedence(Mul(`Implicit))
       | LEFT_PAREN => getOpPrecedence(Mul(`Implicit))
       | CARET => getOpPrecedence(Exp)
-      | UNDERSCORE => getOpPrecedence(Sub)
+      | UNDERSCORE => getOpPrecedence(Subscript)
       | SLASH => getOpPrecedence(Div)
       | BANG => getOpPrecedence(Fact)
       | SINGLE_QUOTE => getOpPrecedence(Prime)
@@ -179,7 +181,7 @@ let parse = (tokens: array(Lexer.token)) => {
        * Parse minus as addition, parseNaryArgs converts any minus signs
        * to neg(ation) operators.
        */
-      | MINUS => parseNaryInfix(left, Add)
+      | MINUS => parseBinaryInfix(left, Sub)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
       | LEFT_PAREN =>
         postProcessMulByParens(peek(-1), [left] @ parseMulByParens())
@@ -187,7 +189,7 @@ let parse = (tokens: array(Lexer.token)) => {
       | ELLIPSES => parseNaryInfix(left, Mul(`Implicit))
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
-      | UNDERSCORE => parseBinaryInfix(left, Sub)
+      | UNDERSCORE => parseBinaryInfix(left, Subscript)
       | BANG => parsePostfix(left, Fact)
       | SINGLE_QUOTE => parsePostfix(left, Prime)
       | RIGHT_PAREN => raise(UnmatchedRightParen)
@@ -211,15 +213,12 @@ let parse = (tokens: array(Lexer.token)) => {
       /* there is no token for the operator for implicit multiplication */
       | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
       | ELLIPSES => parseExpression(getOpPrecedence(op))
-      | MINUS =>
-        consume() |> ignore;
-        Apply(Neg, [parseExpression(getOpPrecedence(op))]);
       | _ =>
         consume() |> ignore;
         parseExpression(getOpPrecedence(op));
       };
     switch (op, peek(0).t) {
-    | (Add, PLUS | MINUS) => [result] @ parseNaryArgs(op)
+    | (Add, PLUS) => [result] @ parseNaryArgs(op)
     | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) =>
       [result] @ parseNaryArgs(op)
     | (_, t) when token.t == t => [result] @ parseNaryArgs(op)
@@ -296,12 +295,13 @@ and opToString = op =>
   | Lte => "<="
   | Gte => ">="
   | Add => "+"
+  | Sub => "-"
   | Mul(_) => "*"
   | Neg => "neg"
   | Pos => "pos"
   | Div => "/"
   | Exp => "^"
-  | Sub => "_"
+  | Subscript => "_"
   | Fact => "!"
   | Prime => "'"
   | Func(name) => nodeToString(name)
@@ -333,12 +333,13 @@ and opToJson = op : Js.Json.t =>
     | Lte => string("lte")
     | Gte => string("gte")
     | Add => string("add")
+    | Sub => string("sub")
     | Mul(_) => string("mul")
     | Neg => string("neg")
     | Pos => string("pos")
     | Div => string("div")
     | Exp => string("exp")
-    | Sub => string("sub")
+    | Subscript => string("subscript")
     | Fact => string("fact")
     | Prime => string("prime")
     | Func(name) => nodeToJson(name)

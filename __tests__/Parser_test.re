@@ -28,16 +28,16 @@ describe("Parser", () => {
     testParser("a * b * c", "[* a b c]");
     testParser("abc", "[* a b c]");
     testParser("abcd", "[* a b c d]");
-    testParser("-ab - bc", "[+ [* [neg a] b] [neg [* b c]]]");
+    testParser("-ab - bc", "[- [* [neg a] b] [* b c]]");
     testParser("-ab + -bc", "[+ [* [neg a] b] [* [neg b] c]]");
     testParser("ab * cd", "[* [* a b] [* c d]]");
-    testParser("abc - xyz", "[+ [* a b c] [neg [* x y z]]]");
+    testParser("abc - xyz", "[- [* a b c] [* x y z]]");
     testParser("(a)(b)(c)", "[* a b c]");
     testParser("(a)(b) * (c)(d)", "[* [* a b] [* c d]]");
     testParser("-(x)(y)(z)", "[* [neg x] y z]");
     testParser("2x", "[* 2 x]");
     testParser("-2xy", "[* [neg 2] x y]");
-    testParser("1 - 2xy", "[+ 1 [neg [* 2 x y]]]");
+    testParser("1 - 2xy", "[- 1 [* 2 x y]]");
     testParser("1 + -2xy", "[+ 1 [* [neg 2] x y]]");
     testParser("2(x)", "[* 2 x]");
     testParser("(2)(x)", "[* 2 x]");
@@ -69,15 +69,17 @@ describe("Parser", () => {
     testParser("(-2)", "[neg 2]");
   });
   describe("subtraction/negation", () => {
-    testParser("1-2", "[+ 1 [neg 2]]");
-    testParser("1-2+3", "[+ 1 [neg 2] 3]");
-    testParser("1--2", "[+ 1 [neg [neg 2]]]");
+    testParser("1 - 2", "[- 1 2]");
+    testParser("1 - 2 - 3", "[- [- 1 2] 3]");
+    testParser("1 + 2 - 3 + 4", "[+ 1 [- 2 3] 4]");
+    testParser("1 + 2 - 3 - 4 + 5", "[+ 1 [- [- 2 3] 4] 5]");
+    testParser("1 - (2 + 3)", "[- 1 [+ 2 3]]");
+    testParser("1--2", "[- 1 [neg 2]]");
     testParser("-1", "[neg 1]");
     testParser("--1", "[neg [neg 1]]");
-    testParser("1 - (2 * 3)", "[+ 1 [neg [* 2 3]]]");
     testParser("-(2 * 3)", "[neg [* 2 3]]");
     testParser("-2 * 3", "[* [neg 2] 3]");
-    testParser("(2 * 3) - 4", "[+ [* 2 3] [neg 4]]");
+    testParser("(2 * 3) - 4", "[- [* 2 3] 4]");
   });
   describe("exponents", () => {
     testParser("2^3", "[^ 2 3]");
@@ -120,7 +122,7 @@ describe("Parser", () => {
   });
   describe("subscripts", () => {
     testParser("a_n", "[_ a n]");
-    testParser("a_(n-1)", "[_ a [+ n [neg 1]]]");
+    testParser("a_(n-1)", "[_ a [- n 1]]");
     testParser("a_n_i", "[_ [_ a n] i]");
     testParser("a_n^2", "[^ [_ a n] 2]");
     testParser("a_n b_m", "[* [_ a n] [_ b m]]");
@@ -142,12 +144,12 @@ describe("Parser", () => {
     testParser("a_n!", "[! [_ a n]]");
     testParser("2n!", "[* 2 [! n]]");
     testParser("n!m!", "[* [! n] [! m]]");
-    testParser("(n-1)!", "[! [+ n [neg 1]]]");
-    testParser("n! * (n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
-    testParser("n!(n-1)!", "[* [! n] [! [+ n [neg 1]]]]");
+    testParser("(n-1)!", "[! [- n 1]]");
+    testParser("n! * (n-1)!", "[* [! n] [! [- n 1]]]");
+    testParser("n!(n-1)!", "[* [! n] [! [- n 1]]]");
     testParser("n!!", "[! [! n]]");
-    testParser("n!m! / (n-1)!", "[/ [* [! n] [! m]] [! [+ n [neg 1]]]]");
-    testParser("n! / (n-k)!k!", "[/ [! n] [* [! [+ n [neg k]]] [! k]]]");
+    testParser("n!m! / (n-1)!", "[/ [* [! n] [! m]] [! [- n 1]]]");
+    testParser("n! / (n-k)!k!", "[/ [! n] [* [! [- n k]] [! k]]]");
   });
   describe("prime", () => {
     testParser("f'", "[' f]");
