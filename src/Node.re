@@ -7,6 +7,7 @@ type node =
   | Number(string)
   | Ellipses
 and operator =
+  | Nul
   | Eq
   | Lt
   | Gt
@@ -27,6 +28,7 @@ and operator =
 
 let getOpPrecedence = op =>
   switch (op) {
+  | Nul => 0
   | Comma => 1
   | Eq => 2
   | Lt => 2
@@ -75,6 +77,7 @@ let rec toString = node =>
   }
 and opToString = op =>
   switch (op) {
+  | Nul => "nul"
   | Comma => ","
   | Eq => "="
   | Lt => "<"
@@ -113,6 +116,7 @@ let rec toJson = node =>
 and opToJson = op : Js.Json.t =>
   Json.Encode.(
     switch (op) {
+    | Nul => string("nul")
     | Comma => string("comma")
     | Eq => string("eq")
     | Lt => string("lt")

@@ -15,9 +15,10 @@ type parselet_type =
   | NaryInfix
   | Postfix;
 
-type parselet = {
+type infix_parselet = {
   t: parselet_type,
   op: operator,
+  parse: (parser, node) => node,
 };
 
 type prefix_parselet = {
@@ -53,94 +54,12 @@ let rec preprocessTokens = (tokens: list(Token.t)) =>
   | [] => []
   };
 
-module TokenTypeMap = Map.Make(TokenType);
-
-let infixParseletMap =
-  TokenTypeMap.empty
-  |> TokenTypeMap.add(TokenType.MINUS, {t: BinaryInfix, op: Sub})
-  |> TokenTypeMap.add(TokenType.CARET, {t: BinaryInfix, op: Exp})
-  |> TokenTypeMap.add(TokenType.SLASH, {t: BinaryInfix, op: Div})
-  |> TokenTypeMap.add(TokenType.UNDERSCORE, {t: BinaryInfix, op: Subscript})
-  |> TokenTypeMap.add(TokenType.COMMA, {t: NaryInfix, op: Comma})
-  |> TokenTypeMap.add(TokenType.EQUAL, {t: NaryInfix, op: Eq})
-  |> TokenTypeMap.add(TokenType.LESS_THAN, {t: NaryInfix, op: Lt})
-  |> TokenTypeMap.add(TokenType.GREATER_THAN, {t: NaryInfix, op: Gt})
-  |> TokenTypeMap.add(TokenType.LESS_THAN_OR_EQUAL, {t: NaryInfix, op: Lte})
-  |> TokenTypeMap.add(
-       TokenType.GREATER_THAN_OR_EQUAL,
-       {t: NaryInfix, op: Gte},
-     )
-  |> TokenTypeMap.add(TokenType.PLUS, {t: NaryInfix, op: Add})
-  |> TokenTypeMap.add(TokenType.STAR, {t: NaryInfix, op: Mul(`Explicit)})
-  |> TokenTypeMap.add(
-       TokenType.IDENTIFIER,
-       {t: NaryInfix, op: Mul(`Implicit)},
-     )
-  |> TokenTypeMap.add(
-       TokenType.ELLIPSES,
-       {t: NaryInfix, op: Mul(`Implicit)},
-     )
-  |> TokenTypeMap.add(TokenType.BANG, {t: Postfix, op: Fact})
-  |> TokenTypeMap.add(TokenType.SINGLE_QUOTE, {t: Postfix, op: Prime});
-
-let prefixParseletMap =
-  TokenTypeMap.empty
-  |> TokenTypeMap.add(
-       TokenType.MINUS,
-       {
-         t: Prefix,
-         parse: (parser, _) =>
-           Apply(Neg, [parser.parseExpression(getOpPrecedence(Neg))]),
-       },
-     )
-  |> TokenTypeMap.add(
-       TokenType.IDENTIFIER,
-       {t: Prefix, parse: (_, token) => Identifier(token.value)},
-     )
-  |> TokenTypeMap.add(
-       TokenType.NUMBER,
-       {t: Prefix, parse: (_, token) => Number(token.value)},
-     )
-  |> TokenTypeMap.add(
-       TokenType.ELLIPSES,
-       {t: Prefix, parse: (_, _) => Ellipses},
-     )
-  |> TokenTypeMap.add(
-    TokenType.LEFT_PAREN,
-    {
-      t: Prefix, 
-      parse: (parser, _) => {
-        let expr = parser.parseExpression(0);
-        switch (parser.consume().t) {
-        | RIGHT_PAREN => expr
-        | _ => raise(UnmatchedLeftParen)
-        };
-      },
-    });
-
-let parseBinaryInfix = (parser, left, op) => {
-  parser.consume() |> ignore;
-  Apply(op, [left, parser.parseExpression(getOpPrecedence(op))]);
-};
-
-let getPrecedence = parser =>
-  switch (parser.peek(0).t) {
-  | LEFT_PAREN => getOpPrecedence(Mul(`Implicit))
-  | token_type =>
-    if (TokenTypeMap.mem(token_type, infixParseletMap)) {
-      let parselet = TokenTypeMap.find(token_type, infixParseletMap);
-      getOpPrecedence(parselet.op);
-    } else {
-      0;
-    }
-  };
-
-let parsePostfix = (parser, left, op) => {
+let parsePostfix = (op, parser, left) => {
   parser.consume() |> ignore;
   Apply(op, [left]);
 };
 
-let rec parseNaryInfix = (parser, left, op) =>
+let rec parseNaryInfix = (op, parser, left) =>
   Apply(op, [left] @ parseNaryArgs(parser, op))
 and parseNaryArgs = (parser, op) => {
   let token = parser.peek(0);
@@ -158,6 +77,13 @@ and parseNaryArgs = (parser, op) => {
   | (_, t) when token.t == t => [expr] @ parseNaryArgs(parser, op)
   | _ => [expr]
   };
+};
+
+module TokenTypeMap = Map.Make(TokenType);
+
+let parseBinaryInfix = (op, parser, left) => {
+  parser.consume() |> ignore;
+  Apply(op, [left, parser.parseExpression(getOpPrecedence(op))]);
 };
 
 let rec parseMulByParens = parser => {
@@ -194,27 +120,161 @@ let postProcessMulByParens = (prevToken: Token.t, children) =>
   | _ => Apply(Mul(`Implicit), children)
   };
 
-let parseInfix = (parser, left) =>
-  switch (parser.peek(0).t) {
-  | LEFT_PAREN =>
-    postProcessMulByParens(
-      parser.peek(-1),
-      [left] @ parseMulByParens(parser),
-    )
-  | RIGHT_PAREN => raise(UnmatchedRightParen)
-  | token_type =>
-    if (TokenTypeMap.mem(token_type, infixParseletMap)) {
-      let parselet = TokenTypeMap.find(token_type, infixParseletMap);
-      switch (parselet.t) {
-      | BinaryInfix => parseBinaryInfix(parser, left, parselet.op)
-      | NaryInfix => parseNaryInfix(parser, left, parselet.op)
-      | Postfix => parsePostfix(parser, left, parselet.op)
-      | _ => raise(Unhandled)
-      };
-    } else {
-      left;
-    }
+let infixParseletMap =
+  TokenTypeMap.empty
+  |> TokenTypeMap.add(
+       TokenType.MINUS,
+       {t: BinaryInfix, op: Sub, parse: parseBinaryInfix(Sub)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.CARET,
+       {t: BinaryInfix, op: Exp, parse: parseBinaryInfix(Exp)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.SLASH,
+       {t: BinaryInfix, op: Div, parse: parseBinaryInfix(Div)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.UNDERSCORE,
+       {t: BinaryInfix, op: Subscript, parse: parseBinaryInfix(Subscript)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.COMMA,
+       {t: NaryInfix, op: Comma, parse: parseNaryInfix(Comma)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.EQUAL,
+       {t: NaryInfix, op: Eq, parse: parseNaryInfix(Eq)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.LESS_THAN,
+       {t: NaryInfix, op: Lt, parse: parseNaryInfix(Lt)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.GREATER_THAN,
+       {t: NaryInfix, op: Gt, parse: parseNaryInfix(Gt)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.LESS_THAN_OR_EQUAL,
+       {t: NaryInfix, op: Lte, parse: parseNaryInfix(Lte)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.GREATER_THAN_OR_EQUAL,
+       {t: NaryInfix, op: Gte, parse: parseNaryInfix(Gte)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.PLUS,
+       {t: NaryInfix, op: Add, parse: parseNaryInfix(Add)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.STAR,
+       {
+         t: NaryInfix,
+         op: Mul(`Explicit),
+         parse: parseNaryInfix(Mul(`Explicit)),
+       },
+     )
+  |> TokenTypeMap.add(
+       TokenType.IDENTIFIER,
+       {
+         t: NaryInfix,
+         op: Mul(`Implicit),
+         parse: parseNaryInfix(Mul(`Implicit)),
+       },
+     )
+  |> TokenTypeMap.add(
+       TokenType.ELLIPSES,
+       {
+         t: NaryInfix,
+         op: Mul(`Implicit),
+         parse: parseNaryInfix(Mul(`Implicit)),
+       },
+     )
+  |> TokenTypeMap.add(
+       TokenType.LEFT_PAREN,
+       {
+         t: NaryInfix,
+         op: Mul(`Implicit),
+         parse: (parser, left) =>
+           postProcessMulByParens(
+             parser.peek(-1),
+             [left] @ parseMulByParens(parser),
+           ),
+       },
+     )
+  |> TokenTypeMap.add(
+       TokenType.RIGHT_PAREN,
+       {t: NaryInfix, op: Nul, parse: (_, _) => raise(UnmatchedRightParen)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.BANG,
+       {t: Postfix, op: Fact, parse: parsePostfix(Fact)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.SINGLE_QUOTE,
+       {t: Postfix, op: Prime, parse: parsePostfix(Prime)},
+     );
+
+let prefixParseletMap =
+  TokenTypeMap.empty
+  |> TokenTypeMap.add(
+       TokenType.MINUS,
+       {
+         t: Prefix,
+         parse: (parser, _) =>
+           Apply(Neg, [parser.parseExpression(getOpPrecedence(Neg))]),
+       },
+     )
+  |> TokenTypeMap.add(
+       TokenType.IDENTIFIER,
+       {t: Prefix, parse: (_, token) => Identifier(token.value)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.NUMBER,
+       {t: Prefix, parse: (_, token) => Number(token.value)},
+     )
+  |> TokenTypeMap.add(
+       TokenType.ELLIPSES,
+       {t: Prefix, parse: (_, _) => Ellipses},
+     )
+  |> TokenTypeMap.add(
+       TokenType.LEFT_PAREN,
+       {
+         t: Prefix,
+         parse: (parser, _) => {
+           let expr = parser.parseExpression(0);
+           switch (parser.consume().t) {
+           | RIGHT_PAREN => expr
+           | _ => raise(UnmatchedLeftParen)
+           };
+         },
+       },
+     );
+
+let getPrecedence = parser => {
+  let token = parser.peek(0);
+  if (TokenTypeMap.mem(token.t, infixParseletMap)) {
+    let parselet = TokenTypeMap.find(token.t, infixParseletMap);
+    getOpPrecedence(parselet.op);
+  } else {
+    0;
   };
+};
+
+let parseInfix = (parser, left) => {
+  let token = parser.peek(0);
+  if (TokenTypeMap.mem(token.t, infixParseletMap)) {
+    let parselet = TokenTypeMap.find(token.t, infixParseletMap);
+    switch (parselet.t) {
+    | BinaryInfix
+    | NaryInfix
+    | Postfix => parselet.parse(parser, left)
+    | _ => raise(Unhandled)
+    };
+  } else {
+    left;
+  };
+};
 
 let parsePrefix = parser => {
   let token = parser.consume();
