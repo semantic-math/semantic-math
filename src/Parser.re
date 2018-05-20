@@ -6,8 +6,8 @@ open Node;
 module TokenTypeMap = Map.Make(TokenType);
 
 type parser = {
-  tokens: ref(array(Token.t)),
-  index: ref(int),
+  mutable tokens: array(Token.t),
+  mutable index: int,
   peek: int => Token.t,
   consume: unit => Token.t,
   parseExpression: int => node,
@@ -251,25 +251,7 @@ let parsePrefix = parser => {
 };
 
 let make = () => {
-  let tokens = ref([||]);
-  let index = ref(0);
   let eof = Token.make(EOF, "");
-  let consume = () =>
-    if (index^ < Array.length(tokens^)) {
-      let result = tokens^[index^];
-      index := index^ + 1;
-      result;
-    } else {
-      eof;
-    };
-  let peek = offset =>
-    if (index^ + offset < 0) {
-      eof;
-    } else if (index^ + offset < Array.length(tokens^)) {
-      tokens^[index^ + offset];
-    } else {
-      eof;
-    };
   let rec parseExpression = precedence => {
     let left = ref(parsePrefix(parser));
     while (precedence < getPrecedence(parser)) {
@@ -278,13 +260,29 @@ let make = () => {
     let result = left^;
     result;
   }
-  and parser = {tokens, index, peek, consume, parseExpression};
+  and consume = () =>
+    if (parser.index < Array.length(parser.tokens)) {
+      let result = parser.tokens[parser.index];
+      parser.index = parser.index + 1;
+      result;
+    } else {
+      eof;
+    }
+  and peek = offset =>
+    if (parser.index + offset < 0) {
+      eof;
+    } else if (parser.index + offset < Array.length(parser.tokens)) {
+      parser.tokens[parser.index + offset];
+    } else {
+      eof;
+    }
+  and parser = {tokens: [||], index: 0, peek, consume, parseExpression};
   parser;
 };
 
 let parse = (parser, tokens: array(Token.t)) => {
-  parser.tokens := Array.of_list(preprocessTokens(Array.to_list(tokens)));
-  parser.index := 0;
+  parser.tokens = Array.of_list(preprocessTokens(Array.to_list(tokens)));
+  parser.index = 0;
   let result = parser.parseExpression(0);
   switch (parser.peek(0).t) {
   | EOF => ()
