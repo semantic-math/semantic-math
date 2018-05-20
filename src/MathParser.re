@@ -20,7 +20,7 @@ and parseNaryArgs = (parser, op) => {
   | ELLIPSES => ()
   | _ => parser.consume() |> ignore
   };
-  let expr = parser.parseExpression(getOpPrecedence(op));
+  let expr = parser.parse(getOpPrecedence(op));
   switch (op, parser.peek(0).t) {
   | (Add, PLUS) => [expr] @ parseNaryArgs(parser, op)
   | (Mul(`Implicit), IDENTIFIER | ELLIPSES) =>
@@ -32,11 +32,11 @@ and parseNaryArgs = (parser, op) => {
 
 let parseBinaryInfix = (op, parser, left) => {
   parser.consume() |> ignore;
-  Apply(op, [left, parser.parseExpression(getOpPrecedence(op))]);
+  Apply(op, [left, parser.parse(getOpPrecedence(op))]);
 };
 
-let rec parseMulByParens = parser => {
-  let expr = parser.parseExpression(getOpPrecedence(Mul(`Implicit)));
+let rec parseMulByParens = (parser: Parser.parser) => {
+  let expr = parser.parse(getOpPrecedence(Mul(`Implicit)));
   switch (parser.peek(0).t) {
   | LEFT_PAREN
   | ELLIPSES => [expr] @ parseMulByParens(parser)
@@ -75,7 +75,7 @@ let prefixParseletMap =
        TokenType.MINUS,
        {
          parse: (parser, _) =>
-           Apply(Neg, [parser.parseExpression(getOpPrecedence(Neg))]),
+           Apply(Neg, [parser.parse(getOpPrecedence(Neg))]),
        },
      )
   |> TokenTypeMap.add(
@@ -91,7 +91,7 @@ let prefixParseletMap =
        TokenType.LEFT_PAREN,
        {
          parse: (parser, _) => {
-           let expr = parser.parseExpression(0);
+           let expr = parser.parse(0);
            switch (parser.consume().t) {
            | RIGHT_PAREN => expr
            | _ => raise(UnmatchedLeftParen)

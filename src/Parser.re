@@ -10,7 +10,7 @@ type parser = {
   mutable index: int,
   peek: int => Token.t,
   consume: unit => Token.t,
-  parseExpression: int => node,
+  parse: int => node,
   infixParseletMap: TokenTypeMap.t(infix_parselet),
   mutable prefixParseletMap: TokenTypeMap.t(prefix_parselet),
 }
@@ -60,7 +60,7 @@ let parsePrefix = parser => {
 
 let make = (prefixParseletMap, infixParseletMap) => {
   let eof = Token.make(EOF, "");
-  let rec parseExpression = precedence => {
+  let rec parse = precedence => {
     let left = ref(parsePrefix(parser));
     while (precedence < getPrecedence(parser)) {
       left := parseInfix(parser, left^);
@@ -89,7 +89,7 @@ let make = (prefixParseletMap, infixParseletMap) => {
     index: 0,
     peek,
     consume,
-    parseExpression,
+    parse,
     prefixParseletMap: prefixParseletMap,
     infixParseletMap: infixParseletMap,
   };
@@ -99,7 +99,7 @@ let make = (prefixParseletMap, infixParseletMap) => {
 let parse = (parser, tokens: array(Token.t)) => {
   parser.tokens = tokens;
   parser.index = 0;
-  let result = parser.parseExpression(0);
+  let result = parser.parse(0);
   switch (parser.peek(0).t) {
   | EOF => ()
   | RIGHT_PAREN => raise(UnmatchedRightParen)
