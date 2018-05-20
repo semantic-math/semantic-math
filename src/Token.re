@@ -20,3 +20,13 @@ let tokenToString = token =>
   ++ ":"
   ++ string_of_int(token.loc.end_)
   ++ "]";
+
+let make = (t, value) =>
+  {
+    t,
+    value,
+    loc: {
+      start: (-1),
+      end_: (-1),
+    },
+  };
