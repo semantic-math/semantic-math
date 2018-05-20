@@ -56,3 +56,79 @@ let getOpPrecedence = op =>
   };
 
 let makeApply = (op, children) => Apply(op, children);
+
+let rec toString = node =>
+  switch (node) {
+  | Apply(op, children) =>
+    "["
+    ++ Js.Array.joinWith(
+         " ",
+         Array.of_list([
+           opToString(op),
+           ...List.map(toString, children),
+         ]),
+       )
+    ++ "]"
+  | Identifier(name) => name
+  | Number(value) => value
+  | Ellipses => "..."
+  }
+and opToString = op =>
+  switch (op) {
+  | Comma => ","
+  | Eq => "="
+  | Lt => "<"
+  | Gt => ">"
+  | Lte => "<="
+  | Gte => ">="
+  | Add => "+"
+  | Sub => "-"
+  | Mul(_) => "*"
+  | Neg => "neg"
+  | Pos => "pos"
+  | Div => "/"
+  | Exp => "^"
+  | Subscript => "_"
+  | Fact => "!"
+  | Prime => "'"
+  | Func(name) => toString(name)
+  };
+
+let rec toJson = node =>
+  Json.Encode.(
+    switch (node) {
+    | Apply(op, args) =>
+      object_([
+        ("type", string("Apply")),
+        ("op", opToJson(op)),
+        ("args", jsonArray(Array.map(toJson, Array.of_list(args)))),
+      ])
+    | Number(value) =>
+      object_([("type", string("Number")), ("value", string(value))])
+    | Identifier(name) =>
+      object_([("type", string("Identifier")), ("name", string(name))])
+    | Ellipses => object_([("type", string("Ellipses"))])
+    }
+  )
+and opToJson = op : Js.Json.t =>
+  Json.Encode.(
+    switch (op) {
+    | Comma => string("comma")
+    | Eq => string("eq")
+    | Lt => string("lt")
+    | Gt => string("gt")
+    | Lte => string("lte")
+    | Gte => string("gte")
+    | Add => string("add")
+    | Sub => string("sub")
+    | Mul(_) => string("mul")
+    | Neg => string("neg")
+    | Pos => string("pos")
+    | Div => string("div")
+    | Exp => string("exp")
+    | Subscript => string("subscript")
+    | Fact => string("fact")
+    | Prime => string("prime")
+    | Func(name) => toJson(name)
+    }
+  );

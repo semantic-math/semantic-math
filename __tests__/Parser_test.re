@@ -7,7 +7,7 @@ test(
   () => {
     let tokens = Lexer.lex(expr);
     let ast = Parser.parse(tokens);
-    expect(Parser.nodeToString(ast)) |> toBe(tree);
+    expect(Node.toString(ast)) |> toBe(tree);
   },
 );
 

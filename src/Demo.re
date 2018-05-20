@@ -2,10 +2,10 @@ let str = "a^2 * b^2 * c^2^x";
 
 let tokens = Lexer.lex(str);
 
-tokens |> Array.map(Lexer.tokenToString) |> Array.iter(Js.log);
+tokens |> Array.map(Token.tokenToString) |> Array.iter(Js.log);
 
 let result = Parser.parse(tokens);
 
-Js.log(Parser.nodeToString(result));
+Js.log(Node.toString(result));
 
-Js.log(Json.stringify(Parser.nodeToJson(result)));
+Js.log(Json.stringify(Node.toJson(result)));
