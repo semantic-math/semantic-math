@@ -4,7 +4,8 @@ let tokens = Lexer.lex(str);
 
 tokens |> Array.map(Token.tokenToString) |> Array.iter(Js.log);
 
-let result = Parser.parse(tokens);
+let parser = Parser.make();
+let result = Parser.parse(parser, tokens);
 
 Js.log(Node.toString(result));
 

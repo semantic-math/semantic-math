@@ -3,18 +3,20 @@
  */
 open Node;
 
+module TokenTypeMap = Map.Make(TokenType);
+
 type parser = {
+  tokens: ref(array(Token.t)),
+  index: ref(int),
   peek: int => Token.t,
   consume: unit => Token.t,
   parseExpression: int => node,
-};
-
-type infix_parselet = {
+}
+and infix_parselet = {
   op: operator,
   parse: (parser, node) => node,
-};
-
-type prefix_parselet = {parse: (parser, Token.t) => node};
+}
+and prefix_parselet = {parse: (parser, Token.t) => node};
 
 exception Unhandled;
 
@@ -68,8 +70,6 @@ and parseNaryArgs = (parser, op) => {
   | _ => [expr]
   };
 };
-
-module TokenTypeMap = Map.Make(TokenType);
 
 let parseBinaryInfix = (op, parser, left) => {
   parser.consume() |> ignore;
@@ -250,14 +250,13 @@ let parsePrefix = parser => {
   };
 };
 
-let parse = (tokens: array(Token.t)) => {
-  /* TODO: instead of actually consuming tokens, just advance an index */
-  let tokens = Array.of_list(preprocessTokens(Array.to_list(tokens)));
+let make = () => {
+  let tokens = ref([||]);
   let index = ref(0);
   let eof = Token.make(EOF, "");
   let consume = () =>
-    if (index^ < Array.length(tokens)) {
-      let result = tokens[index^];
+    if (index^ < Array.length(tokens^)) {
+      let result = tokens^[index^];
       index := index^ + 1;
       result;
     } else {
@@ -265,10 +264,9 @@ let parse = (tokens: array(Token.t)) => {
     };
   let peek = offset =>
     if (index^ + offset < 0) {
-      /* TODO: make a dummy token */
       eof;
-    } else if (index^ + offset < Array.length(tokens)) {
-      tokens[index^ + offset];
+    } else if (index^ + offset < Array.length(tokens^)) {
+      tokens^[index^ + offset];
     } else {
       eof;
     };
@@ -280,13 +278,18 @@ let parse = (tokens: array(Token.t)) => {
     let result = left^;
     result;
   }
-  and parser = {peek, consume, parseExpression};
-  /* start parsing */
-  let result = parseExpression(0);
+  and parser = {tokens, index, peek, consume, parseExpression};
+  parser;
+};
+
+let parse = (parser, tokens: array(Token.t)) => {
+  parser.tokens := Array.of_list(preprocessTokens(Array.to_list(tokens)));
+  parser.index := 0;
+  let result = parser.parseExpression(0);
   switch (parser.peek(0).t) {
+  | EOF => ()
   | RIGHT_PAREN => raise(UnmatchedRightParen)
-  | t when t != EOF => raise(UnexpectedToken) /* unexpected token */
-  | _ => ()
+  | _ => raise(UnexpectedToken)
   };
   result;
 };
