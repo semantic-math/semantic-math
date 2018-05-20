@@ -170,6 +170,7 @@ let parse = (tokens: array(Lexer.token)) => {
   and parseInfix = left =>
     Lexer.(
       switch (peek(0).t) {
+      /* n-ary infix */
       | COMMA => parseNaryInfix(left, Comma)
       | EQUAL => parseNaryInfix(left, Eq)
       | LESS_THAN => parseNaryInfix(left, Lt)
@@ -177,19 +178,17 @@ let parse = (tokens: array(Lexer.token)) => {
       | LESS_THAN_OR_EQUAL => parseNaryInfix(left, Lte)
       | GREATER_THAN_OR_EQUAL => parseNaryInfix(left, Gte)
       | PLUS => parseNaryInfix(left, Add)
-      /***
-       * Parse minus as addition, parseNaryArgs converts any minus signs
-       * to neg(ation) operators.
-       */
-      | MINUS => parseBinaryInfix(left, Sub)
       | STAR => parseNaryInfix(left, Mul(`Explicit))
-      | LEFT_PAREN =>
-        postProcessMulByParens(peek(-1), [left] @ parseMulByParens())
       | IDENTIFIER(_) => parseNaryInfix(left, Mul(`Implicit))
       | ELLIPSES => parseNaryInfix(left, Mul(`Implicit))
+      | LEFT_PAREN =>
+        postProcessMulByParens(peek(-1), [left] @ parseMulByParens())
+      /* binary infix */
+      | MINUS => parseBinaryInfix(left, Sub)
       | CARET => parseBinaryInfix(left, Exp)
       | SLASH => parseBinaryInfix(left, Div)
       | UNDERSCORE => parseBinaryInfix(left, Subscript)
+      /* postfix */
       | BANG => parsePostfix(left, Fact)
       | SINGLE_QUOTE => parsePostfix(left, Prime)
       | RIGHT_PAREN => raise(UnmatchedRightParen)
@@ -208,21 +207,19 @@ let parse = (tokens: array(Lexer.token)) => {
   and parseNaryArgs = op => {
     open Lexer;
     let token = peek(0);
-    let result =
-      switch (token.t) {
-      /* there is no token for the operator for implicit multiplication */
-      | IDENTIFIER(_) => parseExpression(getOpPrecedence(op))
-      | ELLIPSES => parseExpression(getOpPrecedence(op))
-      | _ =>
-        consume() |> ignore;
-        parseExpression(getOpPrecedence(op));
-      };
+    switch (token.t) {
+    /* there is no token for the operator for implicit multiplication */
+    | IDENTIFIER(_) => ()
+    | ELLIPSES => ()
+    | _ => consume() |> ignore
+    };
+    let expr = parseExpression(getOpPrecedence(op));
     switch (op, peek(0).t) {
-    | (Add, PLUS) => [result] @ parseNaryArgs(op)
+    | (Add, PLUS) => [expr] @ parseNaryArgs(op)
     | (Mul(`Implicit), IDENTIFIER(_) | ELLIPSES) =>
-      [result] @ parseNaryArgs(op)
-    | (_, t) when token.t == t => [result] @ parseNaryArgs(op)
-    | _ => [result]
+      [expr] @ parseNaryArgs(op)
+    | (_, t) when token.t == t => [expr] @ parseNaryArgs(op)
+    | _ => [expr]
     };
   }
   and parseMulByParens = () => {
@@ -345,9 +342,3 @@ and opToJson = op : Js.Json.t =>
     | Func(name) => nodeToJson(name)
     }
   );
-
-
-type payload = {. "name": string}
-and barload = {. "foo": payload};
-
-let foobar = {"foo": {"name": "bar"}};
