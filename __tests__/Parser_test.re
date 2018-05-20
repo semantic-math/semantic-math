@@ -1,14 +1,12 @@
 open Jest;
 open Expect;
 
-let parser = Parser.make();
-
 let testParser = (expr, tree) =>
 test(
   expr ++ " parses as " ++ tree,
   () => {
     let tokens = Lexer.lex(expr);
-    let ast = Parser.parse(parser, tokens);
+    let ast = MathParser.parse(tokens);
     expect(Node.toString(ast)) |> toBe(tree);
   },
 );
@@ -16,7 +14,7 @@ test(
 let testError = (expr, exc) =>
 test(expr ++ " raises " ++ Printexc.to_string(exc), () =>
   expect(() =>
-    Parser.parse(parser, Lexer.lex(expr))
+  MathParser.parse(Lexer.lex(expr))
   ) |> toThrowException(exc)
 );
 
