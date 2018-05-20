@@ -6,14 +6,11 @@
  */
 let rec transform = (visitor, node) =>
   Node.(
-    switch (node.node_desc) {
+    switch (node) {
     | Apply(op, children) =>
       let newChildren = List.map(transform(visitor), children);
       let apply = makeApply(op, newChildren);
-      visitor({
-        node_desc: apply.node_desc,
-        loc: node.loc /* maintain the location of the node */
-      });
+      visitor(apply);
     | _ => visitor(node)
     }
   );

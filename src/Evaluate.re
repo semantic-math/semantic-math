@@ -13,10 +13,12 @@ exception UndefinedVariable(string);
 
 exception UnhandledOperation(Node.operator);
 
+exception UnhandledNode(Node.node);
+
 let rec evaluate =
   Node.(
     node =>
-      switch (node.node_desc) {
+      switch (node) {
       | Apply(op, children) =>
         let children = List.map(evaluate, children);
         switch (op) {
@@ -29,7 +31,7 @@ let rec evaluate =
           /* TODO: handle functions wtih multiple args */
           /* TODO: handle user defined functions */
           let arg = List.hd(children);
-          switch (fn.node_desc) {
+          switch (fn) {
           | Identifier(name) =>
             switch (Data.funcForName(name)) {
             | Some(fn) => fn(arg)
@@ -45,5 +47,6 @@ let rec evaluate =
         | None => raise(UndefinedVariable(name))
         }
       | Number(value) => float_of_string(value)
+      | _ => raise(UnhandledNode(node))
       }
   );

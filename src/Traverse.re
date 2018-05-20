@@ -3,7 +3,7 @@
  */
 let rec traverse = (visitor, node) =>
   Node.(
-    switch (node.node_desc) {
+    switch (node) {
     | Node.Apply(_, children) =>
       List.iter(traverse(visitor), children);
       visitor(node);
