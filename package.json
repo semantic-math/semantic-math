@@ -7,7 +7,9 @@
     "clean": "bsb -clean-world",
     "test": "jest",
     "lexer": "browserify lib/js/src/Lexer.bs.js -o dist/lexer.js -s Lexer",
-    "parser": "browserify lib/js/src/Parser.bs.js -o dist/parser.js -s Parser"
+    "parser": "browserify lib/js/src/Parser.bs.js -o dist/parser.js -s Parser",
+    "canvas": "browserify lib/js/src/CanvasRenderer.bs.js -o dist/canvas.js -s CanvasRenderer",
+    "watch-canvas": "watchify lib/js/src/CanvasRenderer.bs.js -o dist/canvas.js -s CanvasRenderer"
   },
   "keywords": [
     "BuckleScript"
@@ -17,9 +19,12 @@
   "devDependencies": {
     "@glennsl/bs-jest": "^0.4.2",
     "browserify": "^16.2.2",
-    "bs-platform": "^3.0.0"
+    "bs-platform": "^3.0.0",
+    "watchify": "^3.11.0"
   },
   "dependencies": {
-    "@glennsl/bs-json": "^1.3.2"
+    "@glennsl/bs-json": "^1.3.2",
+    "bs-fetch": "^0.2.1",
+    "bs-webapi": "^0.9.1"
   }
 }
