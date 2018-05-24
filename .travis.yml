@@ -4,8 +4,6 @@ node_js:
 cache:
   directories:
     - node_modules
-install:
-  - npm install -g bs-platform
 script:
   - npm run build
   - npm test
