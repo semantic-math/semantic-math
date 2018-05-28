@@ -1,8 +1,6 @@
 /**
  * Parser - A generalized Pratt Parser
  */
-open Node;
-
 module TokenTypeMap = Map.Make(TokenType);
 
 type parser = {
@@ -10,15 +8,15 @@ type parser = {
   mutable index: int,
   peek: int => Token.t,
   consume: unit => Token.t,
-  parse: int => node,
+  parse: int => Node.t,
   infixParseletMap: TokenTypeMap.t(infix_parselet),
   mutable prefixParseletMap: TokenTypeMap.t(prefix_parselet),
 }
 and infix_parselet = {
-  op: operator,
-  parse: (parser, node) => node,
+  op: Node.operator,
+  parse: (parser, Node.t) => Node.t,
 }
-and prefix_parselet = {parse: (parser, Token.t) => node};
+and prefix_parselet = {parse: (parser, Token.t) => Node.t};
 
 exception Unhandled;
 
@@ -32,7 +30,7 @@ let getPrecedence = parser => {
   let token = parser.peek(0);
   if (TokenTypeMap.mem(token.t, parser.infixParseletMap)) {
     let parselet = TokenTypeMap.find(token.t, parser.infixParseletMap);
-    getOpPrecedence(parselet.op);
+    Node.getOpPrecedence(parselet.op);
   } else {
     0;
   };

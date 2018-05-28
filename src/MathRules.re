@@ -1,8 +1,8 @@
 open Node;
 
 type transformer = {
-  check: node => bool,
-  transform: node => node,
+  check: Node.t => bool,
+  transform: Node.t => Node.t,
 };
 
 let isNumber = node =>

@@ -5,7 +5,7 @@ let sum = List.fold_left((+.), 0.);
 
 let prod = List.fold_left(( *. ), 1.);
 
-exception UnhandleFunction(Node.node);
+exception UnhandleFunction(Node.t);
 
 exception UndefinedFunction(string);
 
@@ -13,7 +13,7 @@ exception UndefinedVariable(string);
 
 exception UnhandledOperation(Node.operator);
 
-exception UnhandledNode(Node.node);
+exception UnhandledNode(Node.t);
 
 let rec evaluate =
   Node.(

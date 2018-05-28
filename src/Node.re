@@ -1,8 +1,8 @@
 /**
  * node and operator type definitions and operator precedence
  */
-type node =
-  | Apply(operator, list(node))
+type t =
+  | Apply(operator, list(t))
   | Identifier(string)
   | Number(string)
   | Ellipses
@@ -24,7 +24,7 @@ and operator =
   | Comma
   | Fact
   | Prime
-  | Func(node);
+  | Func(t);
 
 let getOpPrecedence = op =>
   switch (op) {
