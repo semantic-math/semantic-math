@@ -6,7 +6,7 @@ type glyph = {
   width: float,
 };
 
-type fontData = {
+type font_data = {
   unitsPerEm: float,
   glyphMetrics: Js.Dict.t(glyph),
 };
@@ -22,7 +22,7 @@ let decodeGlyph = json => {
   };
 };
 
-let decodeFontData = json => {
+let decodeFontData = (json: Js.Json.t) => {
   open! Json.Decode;
   {
     unitsPerEm: json |> field("unitsPerEm", float),
@@ -32,7 +32,8 @@ let decodeFontData = json => {
 
 exception Unhandled;
 
-let getMetrics = (fontData: fontData, char: Char.t, fontSize: float) => {
+/* TODO: return width, height, depth metrics */
+let getMetrics = (fontData: font_data, char: Char.t, fontSize: float) => {
   let {unitsPerEm, glyphMetrics} = fontData;
   switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
   | Some({advance, bearingX, bearingY, width, height}) => 
