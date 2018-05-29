@@ -60,38 +60,6 @@ let glyphMap = IntMap.add(15, "Goodbye", glyphMap);
 
 IntMap.iter((key, value) => Js.log(string_of_int(key) ++ " = " ++ value), glyphMap);
 
-type glyph = {
-  advance: int,
-  bearingX: int,
-  bearingY: int,
-  height: int,
-  width: int,
-};
-
-type fontData = {
-  unitsPerEm: int,
-  glyphMetrics: Js.Dict.t(glyph)
-};
-
-let decodeGlyph = json => {
-  open! Json.Decode;
-  {
-    advance: json |> field("advance", int),
-    bearingX: json |> field("bearingX", int),
-    bearingY: json |> field("bearingY", int),
-    height: json |> field("height", int),
-    width: json |> field("width", int),
-  };
-};
-
-let decodeFontData = json => {
-  open! Json.Decode;
-  {
-    unitsPerEm: json |> field("unitsPerEm", int),
-    glyphMetrics: json |> field("glyphMetrics", dict(decodeGlyph))
-  };
-};
-
 type point = {
   mutable x: float,
   mutable y: float,
@@ -100,10 +68,10 @@ type point = {
 Js.Promise.(
   Fetch.fetch("/metrics/comic-sans.json")
   |> then_(Fetch.Response.json)
-  |> then_(json => {
-    let fontRec = decodeFontData(json);
-    Js.log(fontRec.unitsPerEm);
-    Js.log(fontRec.glyphMetrics);
+  |> then_(json => Metrics.({
+    let fontData = decodeFontData(json);
+    Js.log(fontData.unitsPerEm);
+    Js.log(fontData.glyphMetrics);
     /* TODO: draw bounding boxes around each letter in "Hello, world!" */
     let text = "Hello, world!";
     let pen = {
@@ -114,21 +82,14 @@ Js.Promise.(
     ctx |. lineWidth(1.);
     ctx |. setFillStyle(String, "#0000FF");
     text |> String.iter(letter => {
-      switch(Js.Dict.get(fontRec.glyphMetrics, string_of_int(Char.code(letter)))) {
-        | Some(glyph) => 
-          Js.log(pen);
-          let width = fontSize *. float_of_int(glyph.width) /. float_of_int(fontRec.unitsPerEm);
-          let height = fontSize *. float_of_int(glyph.height) /. float_of_int(fontRec.unitsPerEm);
-          let bearingX = fontSize *. float_of_int(glyph.bearingX) /. float_of_int(fontRec.unitsPerEm);
-          let bearingY = fontSize *. float_of_int(glyph.bearingY) /. float_of_int(fontRec.unitsPerEm);
-          ctx |. strokeRect(~x=pen.x +. bearingX, ~y=pen.y -. bearingY -. height, ~w=width, ~h=height);
-          ctx |> fillText(String.make(1, letter), ~x=pen.x, ~y=pen.y);
-          pen.x = pen.x +. fontSize *. float_of_int(glyph.advance) /. float_of_int(fontRec.unitsPerEm);
-        | None => ();
-        };
+      let {width, height, advance, bearingX, bearingY} = getMetrics(fontData, letter, fontSize);
+      Js.log(pen);
+      ctx |. strokeRect(~x=pen.x +. bearingX, ~y=pen.y -. bearingY -. height, ~w=width, ~h=height);
+      ctx |> fillText(String.make(1, letter), ~x=pen.x, ~y=pen.y);
+      pen.x = pen.x +. advance;
     });
     resolve();
-  })
+  }))
 );
 
 let tokens = Lexer.lex("1+2+3");
