@@ -5,6 +5,9 @@
  */
 module type MetricsProvider = {
   let getMetrics: (Char.t, float) => Metrics.glyph;
+  let getCharWidth: (Char.t, float) => float;
+  let getCharHeight: (Char.t, float) => float;
+  let getCharDepth: (Char.t, float) => float;
 };
 
 module Make = (MP: MetricsProvider) => {
@@ -37,23 +40,24 @@ module Make = (MP: MetricsProvider) => {
 
   let width = a =>
     switch (a) {
-    | Glyph(char, fontSize) => MP.getMetrics(char, fontSize).advance
+    | Glyph(char, fontSize) => MP.getCharWidth(char, fontSize)
     | Kern(size) => size
     | Rule({width}) => width
     | Box(_, {width}) => width
     };
 
-  let height = a =>
+  let height = a => {
     switch (a) {
-    | Glyph(char, fontSize) => MP.getMetrics(char, fontSize).bearingY
+    | Glyph(char, fontSize) => MP.getCharHeight(char, fontSize)
     | Rule({height}) => height
     | Box(shift, {height}) => height -. shift
     | _ => 0.
     };
+  };
 
   let depth = a =>
     switch (a) {
-    | Glyph(char, fontSize) => MP.getMetrics(char, fontSize).height -. MP.getMetrics(char, fontSize).bearingY
+    | Glyph(char, fontSize) => MP.getCharDepth(char, fontSize)
     | Rule({depth}) => depth
     | Box(shift, {depth}) => depth +. shift
     | _ => 0.
@@ -61,7 +65,7 @@ module Make = (MP: MetricsProvider) => {
 
   let vwidth = a =>
     switch (a) {
-    | Glyph(char, fontSize) => MP.getMetrics(char, fontSize).advance
+    | Glyph(char, fontSize) => MP.getCharWidth(char, fontSize)
     | Rule({width}) => width
     | Box(shift, {width}) => width +. shift
     | _ => 0.
@@ -106,4 +110,33 @@ module Make = (MP: MetricsProvider) => {
       },
       nl,
     );
+
+  let box0 = (box) => Box(0., box);
+
+  let makeList = (dist, box) => [Kern(dist), box0(box)];
+  
+  let makeVBox = (width, node, upList, dnList) => {
+    let height = vlistVsize(upList) +. height(node);
+    let depth = vlistVsize(dnList) +. depth(node);
+    let nodeList = List.rev_append(upList, [node, ...dnList]);
+    Js.log("height = " ++ string_of_float(height));
+    Js.log("depth = " ++ string_of_float(depth));
+    vbox({width, depth, height}, nodeList);
+  }
+
+  let makeFract = (thickness, width, numBox: box, denBox: box) => {
+    Js.log("makeFract");
+    let halfThickness = 0.5 *. thickness;
+    /* let axisHeight = 10. /* TODO: calculate the midline of '=' */
+
+    /* TODO: figure out what these values should be */
+    let axisNum = 10. -. axisHeight;
+    let axisDen = 10. +. axisHeight;
+
+    let distNum = axisNum -. halfThickness -. numBox.depth; /* distance between fraction bar and numerator */
+    let distDen = axisDen -. halfThickness -. denBox.height; distance between fraction bar and denominator */
+   
+    let stroke = Rule({height: halfThickness, depth: halfThickness, width});
+    makeVBox(width, stroke, makeList(10., numBox), makeList(10., denBox));
+  };
 };

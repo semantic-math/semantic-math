@@ -1,3 +1,4 @@
+[%%debugger.chrome];
 open Webapi.Canvas;
 
 open Canvas2d;
@@ -28,24 +29,10 @@ let makeContext = () => {
 let ctx = makeContext();
 
 /* enable retina mode */
-
 ctx |> scale(~x=2., ~y=2.);
 
-ctx |. setFillStyle(String, "cyan");
-ctx |. fillRect(~x=0., ~y=0., ~w=100., ~h=100.);
-
 ctx |. setFillStyle(String, "#000000");
-ctx |. font("100px comic sans ms");
-/* ctx |> fillText("Hello, world!", ~x=50., ~y=100.); */
-
-ctx |. lineCap(LineCap.round);
-ctx |. lineWidth(10.);
 ctx |. setStrokeStyle(String, "magenta");
-
-ctx |> beginPath;
-ctx |> moveTo(~x=100., ~y=100.);
-ctx |> lineTo(~x=200., ~y=200.);
-ctx |> stroke;
 
 module Int = {
   type t = int;
@@ -82,59 +69,125 @@ Js.Promise.(
 
        ctx |. setFillStyle(String, "#0000FF");
 
-       /* TODO: draw bounding boxes around each letter in "Hello, world!" */
-       /* let text = "Hello, world!";
-          let pen = {
-            x: 50.,
-            y: 100.,
-          };
-          let fontSize = 100.;
-          ctx |. lineWidth(1.);
-          text |> String.iter(letter => {
-            let {width, height, advance, bearingX, bearingY} = getMetrics(letter, fontSize);
-            Js.log(pen);
-            ctx |. strokeRect(~x=pen.x +. bearingX, ~y=pen.y -. bearingY -. height, ~w=width, ~h=height);
-            ctx |> fillText(String.make(1, letter), ~x=pen.x, ~y=pen.y);
-            pen.x = pen.x +. advance;
-          }); */
-
        module MyLayout =
          Layout.Make({
            let getMetrics = getMetrics;
+           let getCharWidth = getCharWidth(fontData);
+           let getCharHeight = getCharHeight(fontData);
+           let getCharDepth = getCharDepth(fontData);
          });
+
+       let fontSize = 60.;
 
        {
          open MyLayout;
          let nl = [
-           Glyph('a', 30.),
+           Glyph('(', fontSize),
+           Glyph('a', fontSize),
            Kern(12.),
-           Glyph('+', 30.),
+           Glyph('+', fontSize),
            Kern(12.),
-           Glyph('b', 30.),
+           Glyph('(', fontSize),
+           Glyph('b', fontSize),
            Kern(12.),
-           Glyph('-', 30.),
+           Glyph('-', fontSize),
            Kern(12.),
-           Glyph('c', 30.),
+           Glyph('c', fontSize),
+           Glyph(')', fontSize),
+           Glyph(')', fontSize),
          ];
 
          let box = hpackNat(nl);
 
-         Js.log("Layout");
-         Js.log(box);
+         let num = hpackNat([Glyph('1', fontSize)]);
+         let den =
+           hpackNat([
+             Glyph('x', fontSize),
+             Kern(12.),
+             Glyph('+', fontSize),
+             Kern(12.),
+             Glyph('y', fontSize),
+           ]);
 
-         let pen = {x: 50., y: 100.};
+         Js.log("height(num) = " ++ string_of_float(height(Box(0., num))));
+         Js.log("depth(num) = " ++ string_of_float(depth(Box(0., num))));
 
-         box.content
-         |> List.iter(atom =>
-              switch (atom) {
-              | Glyph(char, size) =>
-                ctx |. font("30px comic sans ms");
-                ctx |> fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
-                pen.x = pen.x +. getMetrics(char, size).width;
-              | Kern(size) => pen.x = pen.x +. size
-              | _ => ()
-              }
-            );
+         Js.log("height(den) = " ++ string_of_float(height(Box(0., den))));
+         Js.log("depth(den) = " ++ string_of_float(depth(Box(0., den))));
+
+         /* We have to use .MyLayout.width here b/c Metrics always has a .width prop */
+         let fract =
+           makeFract(
+             3.,
+             Js.Math.max_float(num.MyLayout.width, den.MyLayout.width),
+             num,
+             den,
+           );
+
+         /* let pen = {x: 50., y: 100.}; */
+
+         /* TODO: create a new pen each time and use ctx's save() and restore() methods */
+         let rec render = box => {
+           let pen = {x: 0., y: 0.};
+           switch (box) {
+           | {kind: HBox, content} =>
+             pen.y = pen.y +. box.MyLayout.height;
+             content
+             |> List.iter(atom =>
+                  switch (atom) {
+                  | Glyph(char, size) =>
+                    ctx |. font("60px comic sans ms");
+                    ctx |> fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
+
+                    /* TODO: get width and bearingX to draw more precise bounding boxes */
+                    ctx
+                    |> strokeRect(
+                         ~x=pen.x,
+                         ~y=pen.y -. height(atom),
+                         ~w=MyLayout.width(atom),
+                         ~h=MyLayout.vsize(atom),
+                       );
+
+                    pen.x = pen.x +. getMetrics(char, size).width;
+                  | Kern(size) => pen.x = pen.x +. size
+                  | _ => ()
+                  }
+                );
+           | {kind: VBox, content} =>
+             pen.y = pen.y -. box.MyLayout.height;
+             content
+             |> List.iteri((_, atom) =>
+                  switch (atom) {
+                  | Box(_, box) =>
+                    Js.log("box");
+                    Canvas2dRe.save(ctx);
+                    Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
+                    pen.y = pen.y +. height(atom);
+                    render(box);
+                    pen.y = pen.y +. depth(atom);
+                    Canvas2dRe.restore(ctx);
+                  | Rule({MyLayout.width: w, height: h, depth: d}) =>
+                    pen.y = pen.y +. height(atom);
+                    ctx |> fillRect(~x=pen.x, ~y=pen.y -. h, ~w, ~h=h +. d);
+                    pen.y = pen.y +. depth(atom);
+                  | Kern(size) => pen.y = pen.y +. size
+                  | _ => ()
+                  }
+                );
+           };
+         };
+
+         ctx |. lineWidth(1.);
+
+         Canvas2dRe.save(ctx);
+         Canvas2dRe.translate(~x=200., ~y=400., ctx);
+         render(box);
+         Canvas2dRe.restore(ctx);
+
+         Canvas2dRe.save(ctx);
+         Canvas2dRe.translate(~x=200., ~y=200., ctx);
+         render(fract);
+         Canvas2dRe.restore(ctx);
        };
 
        resolve();

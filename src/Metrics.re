@@ -47,3 +47,27 @@ let getMetrics = (fontData: font_data, char: Char.t, fontSize: float) => {
   | None => raise(Unhandled)
   }
 };
+
+let getCharWidth = (fontData: font_data, char: Char.t, fontSize: float) => {
+  let {unitsPerEm, glyphMetrics} = fontData;
+  switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
+  | Some({advance}) => fontSize *. advance /. unitsPerEm
+  | None => raise(Unhandled)
+  }
+};
+
+let getCharHeight = (fontData: font_data, char: Char.t, fontSize: float) => {
+  let {unitsPerEm, glyphMetrics} = fontData;
+  switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
+  | Some({bearingY}) => fontSize *. bearingY /. unitsPerEm
+  | None => raise(Unhandled)
+  }
+};
+
+let getCharDepth = (fontData: font_data, char: Char.t, fontSize: float) => {
+  let {unitsPerEm, glyphMetrics} = fontData;
+  switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
+  | Some({bearingY, height}) => fontSize *. (height -. bearingY) /. unitsPerEm;
+  | None => raise(Unhandled)
+  }
+};
