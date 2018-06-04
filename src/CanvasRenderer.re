@@ -81,6 +81,26 @@ Js.Promise.(
 
        {
          open MyLayout;
+
+         let num = hpackNat([Glyph('1', fontSize)]);
+         let den =
+           hpackNat([
+             Glyph('x', fontSize),
+             Kern(12.),
+             Glyph('+', fontSize),
+             Kern(12.),
+             Glyph('y', fontSize),
+           ]);
+
+         /* We have to use .MyLayout.width here b/c Metrics always has a .width prop */
+         let fract =
+           makeFract(
+             4.5,
+             Js.Math.max_float(num.MyLayout.width, den.MyLayout.width),
+             num,
+             den,
+           );
+
          let nl = [
            Glyph('(', fontSize),
            Glyph('a', fontSize),
@@ -95,77 +115,75 @@ Js.Promise.(
            Glyph('c', fontSize),
            Glyph(')', fontSize),
            Glyph(')', fontSize),
+           Kern(12.),
+           Glyph('+', fontSize),
+           Kern(12.),
+           Box(-18., fract),
          ];
 
          let box = hpackNat(nl);
-
-         let num = hpackNat([Glyph('1', fontSize)]);
-         let den =
-           hpackNat([
-             Glyph('x', fontSize),
-             Kern(12.),
-             Glyph('+', fontSize),
-             Kern(12.),
-             Glyph('y', fontSize),
-           ]);
-
-         Js.log("height(num) = " ++ string_of_float(height(Box(0., num))));
-         Js.log("depth(num) = " ++ string_of_float(depth(Box(0., num))));
-
-         Js.log("height(den) = " ++ string_of_float(height(Box(0., den))));
-         Js.log("depth(den) = " ++ string_of_float(depth(Box(0., den))));
-
-         /* We have to use .MyLayout.width here b/c Metrics always has a .width prop */
-         let fract =
-           makeFract(
-             3.,
-             Js.Math.max_float(num.MyLayout.width, den.MyLayout.width),
-             num,
-             den,
-           );
-
-         /* let pen = {x: 50., y: 100.}; */
+         let debug = true;
 
          /* TODO: create a new pen each time and use ctx's save() and restore() methods */
-         let rec render = box => {
+         let rec render = (box, shift) => {
            let pen = {x: 0., y: 0.};
            switch (box) {
            | {kind: HBox, content} =>
-             pen.y = pen.y +. box.MyLayout.height;
+             if (debug) {
+               ctx
+               |> strokeRect(
+                    ~x=pen.x,
+                    ~y=pen.y -. height(Box(shift, box)),
+                    ~w=MyLayout.width(Box(shift, box)),
+                    ~h=MyLayout.vsize(Box(shift, box)),
+                  );
+             };
              content
              |> List.iter(atom =>
                   switch (atom) {
                   | Glyph(char, size) =>
                     ctx |. font("60px comic sans ms");
                     ctx |> fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
-
-                    /* TODO: get width and bearingX to draw more precise bounding boxes */
-                    ctx
-                    |> strokeRect(
-                         ~x=pen.x,
-                         ~y=pen.y -. height(atom),
-                         ~w=MyLayout.width(atom),
-                         ~h=MyLayout.vsize(atom),
-                       );
-
-                    pen.x = pen.x +. getMetrics(char, size).width;
+                    if (debug) {
+                      ctx
+                      |> strokeRect(
+                           ~x=pen.x,
+                           ~y=pen.y -. height(atom),
+                           ~w=MyLayout.width(atom),
+                           ~h=MyLayout.vsize(atom),
+                         );
+                    };
+                    pen.x = pen.x +. MyLayout.width(atom);
                   | Kern(size) => pen.x = pen.x +. size
+                  | Box(shift, box) =>
+                    Canvas2dRe.save(ctx);
+                    Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
+                    render(box, shift);
+                    Canvas2dRe.restore(ctx);
                   | _ => ()
                   }
                 );
            | {kind: VBox, content} =>
+             if (debug) {
+               ctx
+               |> strokeRect(
+                    ~x=pen.x,
+                    ~y=pen.y -. height(Box(0., box)),
+                    ~w=MyLayout.width(Box(0., box)),
+                    ~h=MyLayout.vsize(Box(0., box)),
+                  );
+             };
              pen.y = pen.y -. box.MyLayout.height;
              content
              |> List.iteri((_, atom) =>
                   switch (atom) {
-                  | Box(_, box) =>
-                    Js.log("box");
+                  | Box(shift, box) =>
+                    pen.y = pen.y +. height(atom);
                     Canvas2dRe.save(ctx);
                     Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
-                    pen.y = pen.y +. height(atom);
-                    render(box);
-                    pen.y = pen.y +. depth(atom);
+                    render(box, shift);
                     Canvas2dRe.restore(ctx);
+                    pen.y = pen.y +. depth(atom);
                   | Rule({MyLayout.width: w, height: h, depth: d}) =>
                     pen.y = pen.y +. height(atom);
                     ctx |> fillRect(~x=pen.x, ~y=pen.y -. h, ~w, ~h=h +. d);
@@ -181,12 +199,13 @@ Js.Promise.(
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=400., ctx);
-         render(box);
+
+         render(box, 0.);
          Canvas2dRe.restore(ctx);
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         render(fract);
+         render(fract, 0.);
          Canvas2dRe.restore(ctx);
        };
 
