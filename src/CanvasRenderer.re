@@ -128,7 +128,7 @@ Js.Promise.(
          let rec render = (box, shift) => {
            let pen = {x: 0., y: 0.};
            switch (box) {
-           | {kind: HBox, content} =>
+           | {kind: HBox, MyLayout.width: w, content} =>
              if (debug) {
                ctx
                |> strokeRect(
@@ -138,10 +138,12 @@ Js.Promise.(
                     ~h=MyLayout.vsize(Box(shift, box)),
                   );
              };
+             /* Finish glue calculations as per pg. 77 in the TeXBook */
+             let availableSpace = w -. hlistWidth(content);
              content
              |> List.iter(atom =>
                   switch (atom) {
-                  | Glyph(char, size) =>
+                  | Glyph(char, _) =>
                     ctx |. font("60px comic sans ms");
                     ctx |> fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
                     if (debug) {
@@ -160,6 +162,8 @@ Js.Promise.(
                     Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
                     render(box, shift);
                     Canvas2dRe.restore(ctx);
+                  | Glue(_) =>
+                    pen.x = pen.x +. availableSpace /. 2.;
                   | _ => ()
                   }
                 );

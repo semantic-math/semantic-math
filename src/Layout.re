@@ -15,17 +15,36 @@ module Make = (MP: MetricsProvider) => {
     | VBox
     | HBox;
 
+  type dist = float;
+  type dim = {
+    width: dist,
+    depth: dist,
+    height: dist,
+  };
+
+  type inf_order = 
+    | Normal 
+    | Fil 
+    | Fill 
+    | Filll;
+
+  type glue_param =
+    | Natural
+    | Stretching(float, inf_order)
+    | Shrinking(float, inf_order)
+
+  type glue_spec = {
+    size: dist,
+    stretch: (dist, inf_order),
+    shrink: (dist, inf_order),
+  };
+
   type node =
     | Glyph(char, float)
     | Kern(dist)
     | Rule(dim)
     | Box(dist, box)
-  and dist = float
-  and dim = {
-    width: dist,
-    depth: dist,
-    height: dist,
-  }
+    | Glue(glue_spec)
   and box = {
     kind: boxkind,
     width: dist,
@@ -44,6 +63,7 @@ module Make = (MP: MetricsProvider) => {
     | Kern(size) => size
     | Rule({width}) => width
     | Box(_, {width}) => width
+    | Glue({size}) => size
     };
 
   let height = a => {
@@ -77,6 +97,7 @@ module Make = (MP: MetricsProvider) => {
     | Rule({height, depth}) => height +. depth
     | Box(_, {height, depth}) => height +. depth
     | Kern(size) => size
+    | Glue({size}) => size
     };
 
   let sum = List.fold_left((+.), 0.);
@@ -90,7 +111,7 @@ module Make = (MP: MetricsProvider) => {
   let vlistWidth = compute(max, vwidth);
   let vlistVsize = compute(sum, vsize);
 
-  let makebox = (kind, {height, depth, width}, content) => {
+  let makebox = (kind, {height, depth, width}: dim, content) => {
     kind,
     width,
     height,
@@ -101,7 +122,7 @@ module Make = (MP: MetricsProvider) => {
   let hbox = makebox(HBox);
   let vbox = makebox(VBox);
 
-  let hpackNat = nl =>
+  let hpackNat = nl => 
     hbox(
       {
         width: hlistWidth(nl),
@@ -124,6 +145,27 @@ module Make = (MP: MetricsProvider) => {
     vbox({width, depth, height}, nodeList);
   }
 
+  let fil = (1., Fil);
+  let fill = (1., Fill);
+  let filll = (1., Filll);
+  let ssGlue = {size: 0., stretch: fill, shrink: fill};
+
+  let rebox = (newWidth, box) => {
+    let {kind, width, height, depth, content} = box;
+    if (newWidth == width) {
+      box;
+    } else if (content == []) {
+      hpackNat([Kern(newWidth)]);
+    } else {
+      let hl = switch(kind) {
+      | VBox => [Box(0., box)] /* get the shift of the incoming box */
+      | HBox => content
+      };
+      let glue = Glue(ssGlue);
+      hbox({width: newWidth, height, depth}, [glue] @ hl @ [glue]);
+    };
+  };
+
   let makeFract = (thickness, width, numBox: box, denBox: box) => {
     Js.log("makeFract");
     let halfThickness = 0.5 *. thickness;
@@ -137,6 +179,8 @@ module Make = (MP: MetricsProvider) => {
     let distDen = axisDen -. halfThickness -. denBox.height; distance between fraction bar and denominator */
    
     let stroke = Rule({height: halfThickness, depth: halfThickness, width});
-    makeVBox(width, stroke, makeList(10., numBox), makeList(10., denBox));
+    let numBox' = rebox(width, numBox);
+    let denBox' = rebox(width, denBox);
+    makeVBox(width, stroke, makeList(10., numBox'), makeList(10., denBox'));
   };
 };
