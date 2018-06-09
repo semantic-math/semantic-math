@@ -1,8 +1,8 @@
-# re-math-parser 
+# semanti-math
 
-[![Build Status](https://travis-ci.org/kevinbarabash/re-math-parser.svg?branch=master)](https://travis-ci.org/kevinbarabash/re-math-parser)
+[![Build Status](https://travis-ci.org/semantic-math/semantic-math.svg?branch=master)](https://travis-ci.org/semantic-math/semantic-math)
 
-A math parser built in Reason.
+A set of tools for parsing, manipulating, and rendering math.
 
 # Build
 ```
