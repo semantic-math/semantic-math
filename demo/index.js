@@ -1,4 +1,4 @@
-import * as Node from "../lib/es6_global/packages/parser/src/Node.bs.js";
+import * as Node from "../lib/es6_global/packages/ast/src/Node.bs.js";
 import * as Lexer from "../lib/es6_global/packages/parser/src/Lexer.bs.js";
 import * as MathParser from "../lib/es6_global/packages/parser/src/MathParser.bs.js";
 

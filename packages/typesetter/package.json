@@ -1,0 +1,7 @@
+{
+    "name": "@semantic-math/typesetter",
+    "version": "0.0.1",
+    "main": "index.js",
+    "author": "Kevin Barabash",
+    "license": "MIT"
+}

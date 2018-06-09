@@ -1,0 +1,10 @@
+{
+  "name": "@semantic-math/parser",
+  "version": "0.0.1",
+  "main": "index.js",
+  "author": "Kevin Barabash",
+  "license": "MIT",
+  "dependencies": {
+    "@semantic-math/ast": "0.0.1"
+  }
+}

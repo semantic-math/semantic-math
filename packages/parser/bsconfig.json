@@ -1,0 +1,27 @@
+{
+    "name": "@semantic-math/parser",
+    "version": "0.0.1",
+    "sources": [
+        {
+            "dir": "src",
+            "subdirs": true
+        },
+        {
+            "dir": "__tests__",
+            "type": "dev"
+        }
+    ],
+    "package-specs": {
+        "module": "es6-global",
+        "in-source": false
+    },
+    "suffix": ".bs.js",
+    "warnings": {
+        "error": "+101"
+    },
+    "bs-dependencies": [
+        "@semantic-math/ast"
+    ],
+    "namespace": true,
+    "refmt": 3
+}

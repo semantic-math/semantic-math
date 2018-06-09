@@ -1,7 +1,11 @@
 {
-  "name": "math-parser",
+  "name": "semantic-parser",
   "version": "0.1.0",
   "sources": [
+    {
+      "dir": "packages/ast/src",
+      "subdirs": true
+    },
     {
       "dir": "packages/parser/src",
       "subdirs": true
@@ -20,11 +24,14 @@
     "in-source": false
   },
   "suffix": ".bs.js",
-  "bs-dependencies": ["@glennsl/bs-json", "bs-webapi", "bs-fetch"],
+  "bs-dependencies": [
+    "@glennsl/bs-json", 
+    "bs-webapi", 
+    "bs-fetch"
+  ],
   "bs-dev-dependencies": ["@glennsl/bs-jest"],
   "warnings": {
     "error": "+101"
   },
-  "namespace": true,
   "refmt": 3
 }
