@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "sources": [
     {
-      "dir": "src",
+      "dir": "packages/parser/src",
       "subdirs": true
     },
     {
-      "dir": "__tests__",
+      "dir": "packages/parser/__tests__",
       "type": "dev"
+    },
+    {
+      "dir": "packages/typesetter/src",
+      "subdirs": true
     }
   ],
   "package-specs": {

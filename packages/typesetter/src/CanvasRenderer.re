@@ -56,7 +56,7 @@ type point = {
 };
 
 Js.Promise.(
-  Fetch.fetch("/metrics/comic-sans.json")
+  Fetch.fetch("/packages/typesetter/metrics/comic-sans.json")
   |> then_(Fetch.Response.json)
   |> then_(json => {
        open Metrics;

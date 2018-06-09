@@ -1,6 +1,6 @@
-import * as Node from "../lib/es6_global/src/Node.bs.js";
-import * as Lexer from "../lib/es6_global/src/Lexer.bs.js";
-import * as MathParser from "../lib/es6_global/src/MathParser.bs.js";
+import * as Node from "../lib/es6_global/packages/parser/src/Node.bs.js";
+import * as Lexer from "../lib/es6_global/packages/parser/src/Lexer.bs.js";
+import * as MathParser from "../lib/es6_global/packages/parser/src/MathParser.bs.js";
 
 const input = document.querySelector("#input");
 const output = document.querySelector("#output");

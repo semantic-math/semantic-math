@@ -2,8 +2,9 @@ language: node_js
 node_js:
   - node
 cache:
+  yarn: true
   directories:
     - node_modules
 script:
-  - npm run build
-  - npm test
+  - yarn build
+  - yarn test
