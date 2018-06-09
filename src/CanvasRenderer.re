@@ -203,13 +203,16 @@ Js.Promise.(
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=400., ctx);
-
          render(box, 0.);
+         ctx |. setFillStyle(String, "#000000");
+         ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         render(fract, 0.);
+         render(hpackNat([Box(-18.,fract)]), 0.);
+         ctx |. setFillStyle(String, "#000000");
+         ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
        };
 
