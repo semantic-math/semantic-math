@@ -7,8 +7,15 @@ type glyph = {
 };
 
 type font_data = {
-  unitsPerEm: float,
-  glyphMetrics: Js.Dict.t(glyph),
+  mutable unitsPerEm: float,
+  mutable glyphMetrics: Js.Dict.t(glyph),
+};
+
+type glyph_metrics = Js.Dict.t(glyph);
+
+let fontData: font_data = {
+  unitsPerEm: 0.,
+  glyphMetrics: Js.Dict.empty(),
 };
 
 let decodeGlyph = json => {
@@ -24,16 +31,14 @@ let decodeGlyph = json => {
 
 let decodeFontData = (json: Js.Json.t) => {
   open! Json.Decode;
-  {
-    unitsPerEm: json |> field("unitsPerEm", float),
-    glyphMetrics: json |> field("glyphMetrics", dict(decodeGlyph)),
-  };
+  fontData.unitsPerEm = json |> field("unitsPerEm", float);
+  fontData.glyphMetrics = json |> field("glyphMetrics", dict(decodeGlyph));
 };
 
 exception Unhandled;
 
 /* TODO: return width, height, depth metrics */
-let getMetrics = (fontData: font_data, char: Char.t, fontSize: float) => {
+let getMetrics = (char: Char.t, fontSize: float) => {
   let {unitsPerEm, glyphMetrics} = fontData;
   switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
   | Some({advance, bearingX, bearingY, width, height}) => 
@@ -48,7 +53,7 @@ let getMetrics = (fontData: font_data, char: Char.t, fontSize: float) => {
   }
 };
 
-let getCharWidth = (fontData: font_data, char: Char.t, fontSize: float) => {
+let getCharWidth = (char: Char.t, fontSize: float) => {
   let {unitsPerEm, glyphMetrics} = fontData;
   switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
   | Some({advance}) => fontSize *. advance /. unitsPerEm
@@ -56,7 +61,7 @@ let getCharWidth = (fontData: font_data, char: Char.t, fontSize: float) => {
   }
 };
 
-let getCharHeight = (fontData: font_data, char: Char.t, fontSize: float) => {
+let getCharHeight = (char: Char.t, fontSize: float) => {
   let {unitsPerEm, glyphMetrics} = fontData;
   switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
   | Some({bearingY}) => fontSize *. bearingY /. unitsPerEm
@@ -64,7 +69,7 @@ let getCharHeight = (fontData: font_data, char: Char.t, fontSize: float) => {
   }
 };
 
-let getCharDepth = (fontData: font_data, char: Char.t, fontSize: float) => {
+let getCharDepth = (char: Char.t, fontSize: float) => {
   let {unitsPerEm, glyphMetrics} = fontData;
   switch (Js.Dict.get(glyphMetrics, string_of_int(Char.code(char)))) {
   | Some({bearingY, height}) => fontSize *. (height -. bearingY) /. unitsPerEm;

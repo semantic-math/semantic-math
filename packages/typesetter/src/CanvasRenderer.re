@@ -60,27 +60,17 @@ Js.Promise.(
   |> then_(Fetch.Response.json)
   |> then_(json => {
        open Metrics;
-       let fontData = decodeFontData(json);
-       /* partial application so we don't have to pass fontData around */
-       let getMetrics = getMetrics(fontData);
+       decodeFontData(json);
 
        Js.log(fontData.unitsPerEm);
        Js.log(fontData.glyphMetrics);
 
        ctx |. setFillStyle(String, "#0000FF");
 
-       module MyLayout =
-         Layout.Make({
-           let getMetrics = getMetrics;
-           let getCharWidth = getCharWidth(fontData);
-           let getCharHeight = getCharHeight(fontData);
-           let getCharDepth = getCharDepth(fontData);
-         });
-
        let fontSize = 60.;
 
        {
-         open MyLayout;
+         open Layout;
 
          let num = hpackNat([Glyph('1', fontSize)]);
          let den =
@@ -96,7 +86,7 @@ Js.Promise.(
          let fract =
            makeFract(
              4.5,
-             Js.Math.max_float(num.MyLayout.width, den.MyLayout.width),
+             Js.Math.max_float(num.Layout.width, den.Layout.width),
              num,
              den,
            );
@@ -122,95 +112,19 @@ Js.Promise.(
          ];
 
          let box = hpackNat(nl);
-         let debug = true;
-
-         /* TODO: create a new pen each time and use ctx's save() and restore() methods */
-         let rec render = (box, shift) => {
-           let pen = {x: 0., y: 0.};
-           switch (box) {
-           | {kind: HBox, MyLayout.width: w, content} =>
-             if (debug) {
-               ctx
-               |> strokeRect(
-                    ~x=pen.x,
-                    ~y=pen.y -. height(Box(shift, box)),
-                    ~w=MyLayout.width(Box(shift, box)),
-                    ~h=MyLayout.vsize(Box(shift, box)),
-                  );
-             };
-             /* Finish glue calculations as per pg. 77 in the TeXBook */
-             let availableSpace = w -. hlistWidth(content);
-             content
-             |> List.iter(atom =>
-                  switch (atom) {
-                  | Glyph(char, _) =>
-                    ctx |. font("60px comic sans ms");
-                    ctx |> fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
-                    if (debug) {
-                      ctx
-                      |> strokeRect(
-                           ~x=pen.x,
-                           ~y=pen.y -. height(atom),
-                           ~w=MyLayout.width(atom),
-                           ~h=MyLayout.vsize(atom),
-                         );
-                    };
-                    pen.x = pen.x +. MyLayout.width(atom);
-                  | Kern(size) => pen.x = pen.x +. size
-                  | Box(shift, box) =>
-                    Canvas2dRe.save(ctx);
-                    Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
-                    render(box, shift);
-                    Canvas2dRe.restore(ctx);
-                  | Glue(_) =>
-                    pen.x = pen.x +. availableSpace /. 2.;
-                  | _ => ()
-                  }
-                );
-           | {kind: VBox, content} =>
-             if (debug) {
-               ctx
-               |> strokeRect(
-                    ~x=pen.x,
-                    ~y=pen.y -. height(Box(0., box)),
-                    ~w=MyLayout.width(Box(0., box)),
-                    ~h=MyLayout.vsize(Box(0., box)),
-                  );
-             };
-             pen.y = pen.y -. box.MyLayout.height;
-             content
-             |> List.iteri((_, atom) =>
-                  switch (atom) {
-                  | Box(shift, box) =>
-                    pen.y = pen.y +. height(atom);
-                    Canvas2dRe.save(ctx);
-                    Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
-                    render(box, shift);
-                    Canvas2dRe.restore(ctx);
-                    pen.y = pen.y +. depth(atom);
-                  | Rule({MyLayout.width: w, height: h, depth: d}) =>
-                    pen.y = pen.y +. height(atom);
-                    ctx |> fillRect(~x=pen.x, ~y=pen.y -. h, ~w, ~h=h +. d);
-                    pen.y = pen.y +. depth(atom);
-                  | Kern(size) => pen.y = pen.y +. size
-                  | _ => ()
-                  }
-                );
-           };
-         };
 
          ctx |. lineWidth(1.);
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=400., ctx);
-         render(box, 0.);
+         Renderer.render(ctx, box, 0.);
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         render(hpackNat([Box(-18.,fract)]), 0.);
+         Renderer.render(ctx, hpackNat([Box(-18.,fract)]), 0.);
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
