@@ -20,7 +20,7 @@
         "error": "+101"
     },
     "bs-dependencies": [
-        "@glennsl/bs-json"
+        "bs-json"
     ],
     "namespace": true,
     "refmt": 3

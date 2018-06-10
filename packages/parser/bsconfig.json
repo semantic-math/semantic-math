@@ -20,7 +20,7 @@
         "error": "+101"
     },
     "bs-dependencies": [
-        "@semantic-math/ast"
+        "ast"
     ],
     "namespace": true,
     "refmt": 3
