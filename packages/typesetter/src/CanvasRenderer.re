@@ -10,9 +10,9 @@ let makeContext = () => {
   open Webapi.Dom;
   let myCanvas = Document.createElement("canvas", document);
 
-  myCanvas |> Element.setAttribute("width", "1600");
+  myCanvas |> Element.setAttribute("width", "2048");
   myCanvas |> Element.setAttribute("height", "1200");
-  myCanvas |> Element.setAttribute("style", "width:800px; height:600px;");
+  myCanvas |> Element.setAttribute("style", "width:1024px; height:600px;");
 
   switch (Document.asHtmlDocument(document)) {
   | Some(htmlDocument) =>
@@ -72,24 +72,73 @@ Js.Promise.(
        {
          open Layout;
 
-         let num = hpackNat([Glyph('1', fontSize)]);
-         let den =
-           hpackNat([
-             Glyph('x', fontSize),
-             Kern(12.),
-             Glyph('+', fontSize),
-             Kern(12.),
-             Glyph('y', fontSize),
-           ]);
+         let rec layout = node : box =>
+           switch (node) {
+           | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
+             let boxList =
+               List.fold_left(
+                 (acc, arg) => {
+                   let larg =
+                     switch (arg) {
+                     | Node.Apply(Node.Add | Node.Sub, _) =>
+                       hpackNat([
+                         Glyph('(', fontSize),
+                         Box(0., layout(arg)),
+                         Glyph(')', fontSize),
+                       ])
+                     | _ => layout(arg)
+                     };
+                   let lop = switch(op) {
+                   | Node.Add => '+'
+                   | Node.Sub => '-'
+                   | _ => '?'
+                   };
+                   switch (acc) {
+                   | [] => [Box(0., larg)]
+                   | _ => acc @ [Glyph(lop, fontSize), Box(0., larg)]
+                   };
+                 },
+                 [],
+                 args,
+               );
+             hpackNat(boxList);
+           | Node.Apply(Node.Div, [num, den]) =>
+             let num = layout(num);
+             let den = layout(den);
+             let frac =
+               makeFract(
+                 4.5,
+                 Js.Math.max_float(num.Layout.width, den.Layout.width),
+                 num,
+                 den,
+               );
+             frac;
+           | Node.Number(value) =>
+             hpackNat(
+               Array.to_list(
+                 Array.map(
+                   (c: string) => Glyph(c.[0], fontSize),
+                   Js.String.split("", value),
+                 ),
+               ),
+             )
+           | Node.Identifier(value) =>
+             hpackNat(
+               Array.to_list(
+                 Array.map(
+                   (c: string) => Glyph(c.[0], fontSize),
+                   Js.String.split("", value),
+                 ),
+               ),
+             )
+           | _ => hpackNat([])
+           };
 
-         /* We have to use .MyLayout.width here b/c Metrics always has a .width prop */
-         let fract =
-           makeFract(
-             4.5,
-             Js.Math.max_float(num.Layout.width, den.Layout.width),
-             num,
-             den,
-           );
+         let tokens = Lexer.lex("(a + (b - c)) + 1 / (x + y)");
+         tokens |> Array.map(Token.tokenToString) |> Array.iter(Js.log);
+         let ast = MathParser.parse(tokens);
+
+         let fract = layout(ast);
 
          let nl = [
            Glyph('(', fontSize),
@@ -124,7 +173,7 @@ Js.Promise.(
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         Renderer.render(ctx, hpackNat([Box(-18.,fract)]), 0.);
+         Renderer.render(ctx, hpackNat([Box(-18., fract)]), 0.);
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);

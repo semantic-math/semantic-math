@@ -46,6 +46,8 @@ let rec render = (ctx, box, shift) => {
            Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
            render(ctx, box, shift);
            Canvas2dRe.restore(ctx);
+           Js.log("width = " ++ string_of_float(width(atom)));
+           pen.x = pen.x +. width(atom);
          | Glue(_) => pen.x = pen.x +. availableSpace /. 2.
          | _ => ()
          }
