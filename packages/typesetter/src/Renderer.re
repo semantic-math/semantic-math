@@ -9,7 +9,7 @@ type point = {
 let debug = true;
 
 /* TODO: create a new pen each time and use ctx's save() and restore() methods */
-let rec render = (ctx, box, shift) => {
+let rec render = (ctx, box) => {
   let pen = {x: 0., y: 0.};
   switch (box) {
   | {kind: HBox, width: w, content} =>
@@ -17,9 +17,9 @@ let rec render = (ctx, box, shift) => {
       ctx
       |> Canvas2d.strokeRect(
            ~x=pen.x,
-           ~y=pen.y -. height(Box(shift, box)),
-           ~w=width(Box(shift, box)),
-           ~h=vsize(Box(shift, box)),
+           ~y=pen.y -. height(Box(0., box)),
+           ~w=width(Box(0., box)),
+           ~h=vsize(Box(0., box)),
          );
     };
     /* Finish glue calculations as per pg. 77 in the TeXBook */
@@ -44,7 +44,7 @@ let rec render = (ctx, box, shift) => {
          | Box(shift, box) =>
            Canvas2dRe.save(ctx);
            Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
-           render(ctx, box, shift);
+           render(ctx, box);
            Canvas2dRe.restore(ctx);
            Js.log("width = " ++ string_of_float(width(atom)));
            pen.x = pen.x +. width(atom);
@@ -69,8 +69,8 @@ let rec render = (ctx, box, shift) => {
          | Box(shift, box) =>
            pen.y = pen.y +. height(atom);
            Canvas2dRe.save(ctx);
-           Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
-           render(ctx, box, shift);
+           Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
+           render(ctx, box);
            Canvas2dRe.restore(ctx);
            pen.y = pen.y +. depth(atom);
          | Rule({width: w, height: h, depth: d}) =>

@@ -72,7 +72,7 @@ Js.Promise.(
        {
          open Layout;
 
-         let rec layout = node : box =>
+         let rec layout = (node: Node.t) : Layout.node =>
            switch (node) {
            | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
              let boxList =
@@ -81,30 +81,34 @@ Js.Promise.(
                    let larg =
                      switch (arg) {
                      | Node.Apply(Node.Add | Node.Sub, _) =>
-                       hpackNat([
-                         Glyph('(', fontSize),
-                         Box(0., layout(arg)),
-                         Glyph(')', fontSize),
-                       ])
+                       Box(
+                         0.,
+                         hpackNat([
+                           Glyph('(', fontSize),
+                           layout(arg),
+                           Glyph(')', fontSize),
+                         ]),
+                       )
                      | _ => layout(arg)
                      };
-                   let lop = switch(op) {
-                   | Node.Add => '+'
-                   | Node.Sub => '-'
-                   | _ => '?'
-                   };
+                   let lop =
+                     switch (op) {
+                     | Node.Add => '+'
+                     | Node.Sub => '-'
+                     | _ => '?'
+                     };
                    switch (acc) {
-                   | [] => [Box(0., larg)]
-                   | _ => acc @ [Glyph(lop, fontSize), Box(0., larg)]
+                   | [] => [larg]
+                   | _ => acc @ [Glyph(lop, fontSize), larg]
                    };
                  },
                  [],
                  args,
                );
-             hpackNat(boxList);
+             Box(0., hpackNat(boxList));
            | Node.Apply(Node.Div, [num, den]) =>
-             let num = layout(num);
-             let den = layout(den);
+             let num = hpackNat([layout(num)]);
+             let den = hpackNat([layout(den)]);
              let frac =
                makeFract(
                  4.5,
@@ -112,26 +116,32 @@ Js.Promise.(
                  num,
                  den,
                );
-             frac;
+             Box(-18., frac);
            | Node.Number(value) =>
-             hpackNat(
-               Array.to_list(
-                 Array.map(
-                   (c: string) => Glyph(c.[0], fontSize),
-                   Js.String.split("", value),
+             Box(
+               0.,
+               hpackNat(
+                 Array.to_list(
+                   Array.map(
+                     (c: string) => Glyph(c.[0], fontSize),
+                     Js.String.split("", value),
+                   ),
                  ),
                ),
              )
            | Node.Identifier(value) =>
-             hpackNat(
-               Array.to_list(
-                 Array.map(
-                   (c: string) => Glyph(c.[0], fontSize),
-                   Js.String.split("", value),
+             Box(
+               0.,
+               hpackNat(
+                 Array.to_list(
+                   Array.map(
+                     (c: string) => Glyph(c.[0], fontSize),
+                     Js.String.split("", value),
+                   ),
                  ),
                ),
              )
-           | _ => hpackNat([])
+           | _ => Kern(0.)
            };
 
          let tokens = Lexer.lex("(a + (b - c)) + 1 / (x + y)");
@@ -157,7 +167,7 @@ Js.Promise.(
            Kern(12.),
            Glyph('+', fontSize),
            Kern(12.),
-           Box(-18., fract),
+           fract,
          ];
 
          let box = hpackNat(nl);
@@ -173,7 +183,7 @@ Js.Promise.(
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         Renderer.render(ctx, hpackNat([Box(-18., fract)]), 0.);
+         Renderer.render(ctx, hpackNat([fract]), 0.);
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
