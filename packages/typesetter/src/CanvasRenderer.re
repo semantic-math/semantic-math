@@ -68,6 +68,7 @@ Js.Promise.(
        ctx |. setFillStyle(String, "#0000FF");
 
        let fontSize = 60.;
+       let spaceSize = 0.2 *. fontSize;
 
        {
          open Layout;
@@ -99,7 +100,14 @@ Js.Promise.(
                      };
                    switch (acc) {
                    | [] => [larg]
-                   | _ => acc @ [Glyph(lop, fontSize), larg]
+                   | _ =>
+                     acc
+                     @ [
+                       Kern(spaceSize),
+                       Glyph(lop, fontSize),
+                       Kern(spaceSize),
+                       larg,
+                     ]
                    };
                  },
                  [],
@@ -175,15 +183,15 @@ Js.Promise.(
          ctx |. lineWidth(1.);
 
          Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=200., ~y=400., ctx);
-         Renderer.render(ctx, box, 0.);
+         Canvas2dRe.translate(~x=100., ~y=400., ctx);
+         Renderer.render(ctx, box);
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
 
          Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=200., ~y=200., ctx);
-         Renderer.render(ctx, hpackNat([fract]), 0.);
+         Canvas2dRe.translate(~x=100., ~y=200., ctx);
+         Renderer.render(ctx, hpackNat([fract]));
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
          Canvas2dRe.restore(ctx);
