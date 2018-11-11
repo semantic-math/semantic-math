@@ -1,4 +1,4 @@
-# semanti-math
+# semantic-math
 
 [![Build Status](https://travis-ci.org/semantic-math/semantic-math.svg?branch=master)](https://travis-ci.org/semantic-math/semantic-math)
 
