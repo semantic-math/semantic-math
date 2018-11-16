@@ -32,7 +32,10 @@ and parseNaryArgs = (parser, op) => {
 
 let parseBinaryInfix = (op, parser, left) => {
   parser.consume() |> ignore;
-  Apply(op, [left, parser.parse(getOpPrecedence(op))]);
+  switch (op) {
+  | Exp => Apply(op, [left, parser.parse(getOpPrecedence(op) - 1)]);
+  | _ => Apply(op, [left, parser.parse(getOpPrecedence(op))]);
+  }
 };
 
 let rec parseMulByParens = (parser: Parser.parser) => {

@@ -67,13 +67,15 @@ Js.Promise.(
 
        ctx |. setFillStyle(String, "#0000FF");
 
-       let fontSize = 60.;
-       let spaceSize = 0.2 *. fontSize;
+       let baseFontSize = 60.;
 
        {
          open Layout;
 
-         let rec layout = (node: Node.t) : Layout.node =>
+         let rec layout = (~fontScale=1.0, node: Node.t) : Layout.node => {
+           let fontSize = fontScale *. baseFontSize;
+           let spaceSize = 0.2 *. fontSize;
+
            switch (node) {
            | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
              let boxList =
@@ -125,6 +127,18 @@ Js.Promise.(
                  den,
                );
              Box(-18., frac);
+           | Node.Apply(Node.Exp, [base, exp]) =>
+             let expFontScale = switch (fontScale) {
+             | 1.0 => 0.7
+             | _ => 0.5
+             };
+             Box(
+               0.,
+               hpackNat([
+                 layout(~fontScale, base),
+                 Box(-26., hpackNat([layout(~fontScale=expFontScale, exp)])),
+               ]),
+             );
            | Node.Number(value) =>
              Box(
                0.,
@@ -151,13 +165,15 @@ Js.Promise.(
              )
            | _ => Kern(0.)
            };
+         };
 
-         let tokens = Lexer.lex("(a + (b - c)) + 1 / (x + y)");
+         let tokens = Lexer.lex("(a^2^2 + (b - c)) + 1 / (x + y)");
          tokens |> Array.map(Token.tokenToString) |> Array.iter(Js.log);
          let ast = MathParser.parse(tokens);
 
          let fract = layout(ast);
 
+         let fontSize = baseFontSize;
          let nl = [
            Glyph('(', fontSize),
            Glyph('a', fontSize),

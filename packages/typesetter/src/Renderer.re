@@ -27,8 +27,8 @@ let rec render = (ctx, box) => {
     content
     |> List.iter(atom =>
          switch (atom) {
-         | Glyph(char, _) =>
-           ctx |. Canvas2d.font("60px comic sans ms");
+         | Glyph(char, fontSize) =>
+           ctx |. Canvas2d.font(string_of_float(fontSize) ++ "0px comic sans ms");
            ctx |> Canvas2d.fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
            if (debug) {
              ctx

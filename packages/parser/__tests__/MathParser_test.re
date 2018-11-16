@@ -83,7 +83,8 @@ describe("MathParser", () => {
   });
   describe("exponents", () => {
     testParser("2^3", "[^ 2 3]");
-    testParser("2^3^4", "[^ [^ 2 3] 4]");
+    testParser("2^3^4", "[^ 2 [^ 3 4]]");
+    testParser("2^3^4^5", "[^ 2 [^ 3 [^ 4 5]]]");
     testParser("-2^x", "[neg [^ 2 x]]");
     testParser("(-2)^x", "[^ [neg 2] x]");
     testParser("a^-2*b^-3", "[* [^ a [neg 2]] [^ b [neg 3]]]");
