@@ -10,9 +10,9 @@ let makeContext = () => {
   open Webapi.Dom;
   let myCanvas = Document.createElement("canvas", document);
 
-  myCanvas |> Element.setAttribute("width", "2048");
+  myCanvas |> Element.setAttribute("width", "2400");
   myCanvas |> Element.setAttribute("height", "1200");
-  myCanvas |> Element.setAttribute("style", "width:1024px; height:600px;");
+  myCanvas |> Element.setAttribute("style", "width:1200px; height:600px;");
 
   switch (Document.asHtmlDocument(document)) {
   | Some(htmlDocument) =>
@@ -75,6 +75,7 @@ Js.Promise.(
          let rec layout = (~fontScale=1.0, node: Node.t) : Layout.node => {
            let fontSize = fontScale *. baseFontSize;
            let spaceSize = 0.2 *. fontSize;
+           let xHeight = 0.65;
 
            switch (node) {
            | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
@@ -88,11 +89,11 @@ Js.Promise.(
                          0.,
                          hpackNat([
                            Glyph('(', fontSize),
-                           layout(arg),
+                           layout(~fontScale, arg),
                            Glyph(')', fontSize),
                          ]),
                        )
-                     | _ => layout(arg)
+                     | _ => layout(~fontScale, arg)
                      };
                    let lop =
                      switch (op) {
@@ -105,11 +106,38 @@ Js.Promise.(
                    | _ =>
                      acc
                      @ [
-                       Kern(spaceSize),
+                       Kern(spaceSize *. fontScale),
                        Glyph(lop, fontSize),
-                       Kern(spaceSize),
+                       Kern(spaceSize *. fontScale),
                        larg,
                      ]
+                   };
+                 },
+                 [],
+                 args,
+               );
+             Box(0., hpackNat(boxList));
+           | Node.Apply(Node.Mul(`Implicit), args) =>
+             let wrapFactors = List.exists(arg => switch(arg) {
+             | Node.Apply(Node.Add | Node.Sub, _) => true
+             | _ => false
+             }, args);
+             let boxList =
+               List.fold_left(
+                 (acc, arg) => {
+                   let larg = wrapFactors
+                    ? Box(
+                         0.,
+                         hpackNat([
+                           Glyph('(', fontSize),
+                           layout(~fontScale, arg),
+                           Glyph(')', fontSize),
+                         ]),
+                       )
+                     : layout(~fontScale, arg);
+                   switch (acc) {
+                   | [] => [larg]
+                   | _ => acc @ [larg]
                    };
                  },
                  [],
@@ -128,17 +156,37 @@ Js.Promise.(
                );
              Box(-18., frac);
            | Node.Apply(Node.Exp, [base, exp]) =>
-             let expFontScale = switch (fontScale) {
-             | 1.0 => 0.7
-             | _ => 0.5
-             };
+             let expFontScale =
+               switch (fontScale) {
+               | 1.0 => 0.7
+               | _ => 0.5
+               };
              Box(
                0.,
                hpackNat([
                  layout(~fontScale, base),
-                 Box(-26., hpackNat([layout(~fontScale=expFontScale, exp)])),
+                 Box(
+                   -.(xHeight *. baseFontSize *. expFontScale),
+                   hpackNat([layout(~fontScale=expFontScale, exp)]),
+                 ),
                ]),
              );
+           | Node.Apply(Node.Neg, args) =>
+             switch (List.hd(args)) {
+             | Node.Apply(Node.Add | Node.Sub, _) =>
+              Box(0.,  hpackNat([
+                Glyph('-', fontSize),
+                Glyph('(', fontSize),
+                layout(~fontScale, List.hd(args)),
+                Glyph(')', fontSize),
+              ]))
+             | _ => 
+              Box(0.,  hpackNat([
+                Glyph('-', fontSize),
+                layout(~fontScale, List.hd(args)),
+              ]))
+             };
+             
            | Node.Number(value) =>
              Box(
                0.,
@@ -167,46 +215,16 @@ Js.Promise.(
            };
          };
 
-         let tokens = Lexer.lex("(a^2^2 + (b - c)) + 1 / (x + y)");
+         let tokens = Lexer.lex("(a)(k^-(1.2x)-j) + (3e^-(x^2+y^2)bc + (b - c)) + 1 / (x + y)");
          tokens |> Array.map(Token.tokenToString) |> Array.iter(Js.log);
          let ast = MathParser.parse(tokens);
 
          let fract = layout(ast);
 
-         let fontSize = baseFontSize;
-         let nl = [
-           Glyph('(', fontSize),
-           Glyph('a', fontSize),
-           Kern(12.),
-           Glyph('+', fontSize),
-           Kern(12.),
-           Glyph('(', fontSize),
-           Glyph('b', fontSize),
-           Kern(12.),
-           Glyph('-', fontSize),
-           Kern(12.),
-           Glyph('c', fontSize),
-           Glyph(')', fontSize),
-           Glyph(')', fontSize),
-           Kern(12.),
-           Glyph('+', fontSize),
-           Kern(12.),
-           fract,
-         ];
-
-         let box = hpackNat(nl);
-
          ctx |. lineWidth(1.);
 
          Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=100., ~y=400., ctx);
-         Renderer.render(ctx, box);
-         ctx |. setFillStyle(String, "#000000");
-         ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
-         Canvas2dRe.restore(ctx);
-
-         Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=100., ~y=200., ctx);
+         Canvas2dRe.translate(~x=50., ~y=200., ctx);
          Renderer.render(ctx, hpackNat([fract]));
          ctx |. setFillStyle(String, "#000000");
          ctx |. fillRect(~x=0., ~y=0., ~w=5., ~h=5.);
