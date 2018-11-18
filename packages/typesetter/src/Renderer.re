@@ -6,7 +6,7 @@ type point = {
   mutable y: float,
 };
 
-let debug = true;
+let debug = false;
 
 /* TODO: create a new pen each time and use ctx's save() and restore() methods */
 let rec render = (ctx, box) => {
@@ -46,7 +46,7 @@ let rec render = (ctx, box) => {
            Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
            render(ctx, box);
            Canvas2dRe.restore(ctx);
-           Js.log("width = " ++ string_of_float(width(atom)));
+           /* Js.log("width = " ++ string_of_float(width(atom))); */
            pen.x = pen.x +. width(atom);
          | Glue(_) => pen.x = pen.x +. availableSpace /. 2.
          | _ => ()

@@ -134,8 +134,8 @@ let makeVBox = (width, node, upList, dnList) => {
   let height = vlistVsize(upList) +. height(node);
   let depth = vlistVsize(dnList) +. depth(node);
   let nodeList = List.rev_append(upList, [node, ...dnList]);
-  Js.log("height = " ++ string_of_float(height));
-  Js.log("depth = " ++ string_of_float(depth));
+  /* Js.log("height = " ++ string_of_float(height));
+  Js.log("depth = " ++ string_of_float(depth)); */
   vbox({width, depth, height}, nodeList);
 }
 

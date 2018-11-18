@@ -20,8 +20,8 @@
   "dependencies": {
     "@glennsl/bs-json": "^2.0.0",
     "bs-fetch": "^0.3.0",
-    "bs-platform": "^3.1.0",
-    "bs-webapi": "^0.9.1",
+    "bs-platform": "^4.0.7",
+    "bs-webapi": "^0.13.1",
     "opentype.js": "^0.8.0"
   },
   "workspaces": [
