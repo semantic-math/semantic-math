@@ -204,8 +204,37 @@ let rec layout =
           ]),
         )
       }
-    | _ => Kern(0.)
+    | _ =>
+      Box(
+        0.,
+        hpackNat([
+          layout(~fontScale, func),
+          Glyph('(', fontSize),
+          layout(~fontScale, List.hd(args)),
+          Glyph(')', fontSize),
+        ]),
+      )
     }
+  | Node.Apply(op, args) when op == Node.Eq =>
+      let boxList =
+      List.fold_left(
+        (acc, arg) => {
+          switch (acc) {
+          | [] => [layout(~fontScale, arg)]
+          | _ =>
+            acc
+            @ [
+              Kern(spaceSize *. fontScale),
+              Glyph('=', fontSize),
+              Kern(spaceSize *. fontScale),
+              layout(~fontScale, arg),
+            ]
+          };
+        },
+        [],
+        args,
+      );
+    Box(0., hpackNat(boxList));
   | Node.Number(value) =>
     Box(
       0.,
@@ -221,6 +250,7 @@ let rec layout =
   | Node.Identifier(value) =>
     switch (value) {
     | "pi" => Glyph(Js.String.fromCharCode(0x03c0).[0], fontSize)
+    | "theta" => Glyph(Js.String.fromCharCode(0x03b8).[0], fontSize)
     | _ =>
       Box(
         0.,
@@ -274,9 +304,9 @@ Js.Promise.(
        renderToCanvas("(a)(k^-(1.2x)-j)");
        renderToCanvas("e^-(x^2+y^2)");
        renderToCanvas("xy^2z^3-a^2bsin(2)");
-       renderToCanvas("sin(pi)");
+       renderToCanvas("sin(theta + pi/2) = -sin(theta)");
+       renderToCanvas("cos^2(theta) + sin^2(theta) = 1");
        renderToCanvas("sqrt(5)");
-       renderToCanvas("pi");
        renderToCanvas("abc");
        renderToCanvas("(a/(x+y)) / (b/(x-y))");
 
