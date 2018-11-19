@@ -17,6 +17,10 @@
     {
       "dir": "packages/typesetter/src",
       "subdirs": true
+    },
+    {
+      "dir": "packages/editor/src",
+      "subdirs": true
     }
   ],
   "package-specs": {

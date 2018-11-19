@@ -1,0 +1,11 @@
+{
+  "name": "@semantic-math/editor",
+  "version": "0.0.1",
+  "main": "index.js",
+  "author": "Kevin Barabash",
+  "license": "MIT",
+  "dependencies": {
+    "@semantic-math/ast": "0.0.1",
+    "@semantic-math/typesetter": "0.0.1"
+  }
+}

@@ -34,7 +34,7 @@ type glue_spec = {
 };
 
 type node =
-  | Glyph(char, float)
+  | Glyph(char, float, metrics) /* TODO: add 'font' as a param */
   | Kern(dist)
   | Rule(dim)
   | Box(dist, box)
@@ -53,7 +53,7 @@ type vlist = list(node);
 
 let width = a =>
   switch (a) {
-  | Glyph(char, fontSize) => getCharWidth(char, fontSize)
+  | Glyph(char, fontSize, metrics) => metrics.getCharWidth(char, fontSize)
   | Kern(size) => size
   | Rule({width}) => width
   | Box(_, {width}) => width
@@ -62,7 +62,7 @@ let width = a =>
 
 let height = a => {
   switch (a) {
-  | Glyph(char, fontSize) => getCharHeight(char, fontSize)
+  | Glyph(char, fontSize, metrics) => metrics.getCharHeight(char, fontSize)
   | Rule({height}) => height
   | Box(shift, {height}) => height -. shift
   | _ => 0.
@@ -71,7 +71,7 @@ let height = a => {
 
 let depth = a =>
   switch (a) {
-  | Glyph(char, fontSize) => getCharDepth(char, fontSize)
+  | Glyph(char, fontSize, metrics) => metrics.getCharDepth(char, fontSize)
   | Rule({depth}) => depth
   | Box(shift, {depth}) => depth +. shift
   | _ => 0.
@@ -79,7 +79,7 @@ let depth = a =>
 
 let vwidth = a =>
   switch (a) {
-  | Glyph(char, fontSize) => getCharWidth(char, fontSize)
+  | Glyph(char, fontSize, metrics) => metrics.getCharWidth(char, fontSize)
   | Rule({width}) => width
   | Box(shift, {width}) => width +. shift
   | _ => 0.
@@ -87,7 +87,7 @@ let vwidth = a =>
 
 let vsize = a =>
   switch (a) {
-  | Glyph(char, fontSize) => getMetrics(char, fontSize).height
+  | Glyph(char, fontSize, metrics) => metrics.getMetrics(char, fontSize).height
   | Rule({height, depth}) => height +. depth
   | Box(_, {height, depth}) => height +. depth
   | Kern(size) => size

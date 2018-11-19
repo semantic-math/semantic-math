@@ -9,7 +9,7 @@ type point = {
 let debug = false;
 
 /* TODO: create a new pen each time and use ctx's save() and restore() methods */
-let rec render = (ctx, box) => {
+let rec render = (ctx, box, metrics) => {
   let pen = {x: 0., y: 0.};
   switch (box) {
   | {kind: HBox, width: w, content} =>
@@ -27,7 +27,7 @@ let rec render = (ctx, box) => {
     content
     |> List.iter(atom =>
          switch (atom) {
-         | Glyph(char, fontSize) =>
+         | Glyph(char, fontSize, _) =>
            ctx |. Canvas2d.font(string_of_float(fontSize) ++ "0px comic sans ms");
            ctx |> Canvas2d.fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
            if (debug) {
@@ -44,7 +44,7 @@ let rec render = (ctx, box) => {
          | Box(shift, box) =>
            Canvas2dRe.save(ctx);
            Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
-           render(ctx, box);
+           render(ctx, box, metrics);
            Canvas2dRe.restore(ctx);
            /* Js.log("width = " ++ string_of_float(width(atom))); */
            pen.x = pen.x +. width(atom);
@@ -70,7 +70,7 @@ let rec render = (ctx, box) => {
            pen.y = pen.y +. height(atom);
            Canvas2dRe.save(ctx);
            Canvas2dRe.translate(~x=pen.x, ~y=pen.y +. shift, ctx);
-           render(ctx, box);
+           render(ctx, box, metrics);
            Canvas2dRe.restore(ctx);
            pen.y = pen.y +. depth(atom);
          | Rule({width: w, height: h, depth: d}) =>
