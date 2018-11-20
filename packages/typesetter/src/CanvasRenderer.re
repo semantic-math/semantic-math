@@ -1,6 +1,5 @@
 [%%debugger.chrome];
 open Webapi.Canvas;
-open Canvas2d;
 
 exception NoBody;
 exception NoDocument;
