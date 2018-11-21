@@ -1,15 +1,15 @@
-open Layout;
-open Webapi.Canvas;
-
 type point = {
   mutable x: float,
   mutable y: float,
 };
 
-let debug = false;
+let debug = true;
 
 /* TODO: create a new pen each time and use ctx's save() and restore() methods */
 let rec render = (ctx, box, metrics) => {
+  open Layout;
+  open Webapi.Canvas;
+
   let pen = {x: 0., y: 0.};
   switch (box) {
   | {kind: HBox, width: w, content} =>
@@ -28,6 +28,8 @@ let rec render = (ctx, box, metrics) => {
     |> List.iter(atom =>
          switch (atom) {
          | Glyph(char, fontSize, _) =>
+           /* TODO: create a Font object that we can get this name from and have
+              it store the metrics as well */
            ctx |. Canvas2d.font(string_of_float(fontSize) ++ "0px comic sans ms");
            ctx |> Canvas2d.fillText(String.make(1, char), ~x=pen.x, ~y=pen.y);
            if (debug) {
@@ -49,6 +51,7 @@ let rec render = (ctx, box, metrics) => {
            /* Js.log("width = " ++ string_of_float(width(atom))); */
            pen.x = pen.x +. width(atom);
          | Glue(_) => pen.x = pen.x +. availableSpace /. 2.
+         /* TODO: rules should affect horizontal layouts */
          | _ => ()
          }
        );
@@ -79,6 +82,7 @@ let rec render = (ctx, box, metrics) => {
            pen.y = pen.y +. depth(atom);
          | Kern(size) => pen.y = pen.y +. size
          | _ => ()
+         /* TOOD: handle other atoms */
          }
        );
   };

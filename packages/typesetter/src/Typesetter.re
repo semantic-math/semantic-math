@@ -7,9 +7,9 @@ type typesetter = {
 };
 
 /* fontMetrics: Metrics.font_data */
-let make = (metrics: Metrics.metrics): typesetter => {
+let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
   let rec typeset =
-        (~fontScale=1.0, ~baseFontSize=30., node: Node.t): Layout.node => {
+        (~fontScale=1.0, node: Node.t): Layout.node => {
     open Layout;
     let fontSize = fontScale *. baseFontSize;
     let spaceSize = 0.2 *. fontSize;

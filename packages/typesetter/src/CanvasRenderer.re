@@ -28,22 +28,6 @@ let makeContext = (width: int, totalHeight: int) => {
   CanvasElement.getContext2d(myCanvas);
 };
 
-module Int = {
-  type t = int;
-  let compare = (a, b) => Pervasives.compare(a, b);
-};
-
-module IntMap = Map.Make(Int);
-
-let glyphMap = IntMap.empty;
-let glyphMap = IntMap.add(10, "Hello", glyphMap);
-let glyphMap = IntMap.add(15, "Goodbye", glyphMap);
-
-IntMap.iter(
-  (key, value) => Js.log(string_of_int(key) ++ " = " ++ value),
-  glyphMap,
-);
-
 type point = {
   mutable x: float,
   mutable y: float,
