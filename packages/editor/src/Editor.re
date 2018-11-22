@@ -24,6 +24,8 @@ type rect = {
   h: float,
 };
 
+type cursor = {mutable index: int};
+
 let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
   open Layout;
   let pen = {x: dx, y: dy};
@@ -119,8 +121,35 @@ Js.Promise.(
 
          /* TODO: avoid having to pass in the height */
          let flatLayout = flatten(~dy=layout.height, layout);
+         open Webapi.Dom;
 
-         /* fill in bounding boxes of glyphs and rules */
+         Document.addClickEventListener(
+           event => {
+             let x = float_of_int(MouseEvent.pageX(event)) -. 16.;
+             let y = float_of_int(MouseEvent.pageY(event)) -. 16.;
+
+             List.iteri(
+               (_, rect) =>
+                 if (x > rect.x
+                     && x < rect.x
+                     +. rect.w
+                     && y > rect.y
+                     && y < rect.y
+                     +. rect.h) {
+                   Js.log("intersection in:");
+                   let {x, y, w, h} = rect;
+                   Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j});
+                 },
+               flatLayout,
+             );
+
+             Js.log({j|x = $(x), y = $(y)|j});
+             ();
+           },
+           document,
+         );
+
+         /* highlight bounding boxes of glyphs and rules */
          ctx->(setFillStyle(String, "#FFFF00"));
          List.iter(
            rect => {
@@ -140,21 +169,57 @@ Js.Promise.(
          Canvas2dRe.translate(~x=0., ~y=height, ctx);
          Renderer.render(ctx, layout, metrics);
          Canvas2dRe.restore(ctx);
+
+         /**
+          * TODO:
+          * - when determining where to place the cursor, include the space around oeprators
+          */
+         let cursor = {index: 0};
+
+         let {x, y, w, h} = Array.of_list(flatLayout)[cursor.index];
+         ctx->(setFillStyle(String, "black"));
+         ctx |> fillRect(~x, ~y, ~w=10., ~h);
+
+         Document.addKeyDownEventListener(
+           event => {
+             let key = KeyboardEvent.key(event);
+             switch (key) {
+             | "ArrowLeft" => cursor.index = max(0, cursor.index - 1)
+             | "ArrowRight" =>
+               cursor.index = min(List.length(flatLayout) - 1, cursor.index + 1)
+             | _ => ()
+             };
+
+             ctx->(setFillStyle(String, "#FFFF00"));
+             List.iter(
+               rect => {
+                 let {x, y, w, h} = rect;
+                 Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j});
+                 ctx |> Canvas2d.fillRect(~x, ~y, ~w, ~h);
+               },
+               flatLayout,
+             );
+
+             ctx->(setStrokeStyle(String, "magenta"));
+             ctx->(setFillStyle(String, "#0000FF"));
+             ctx->(lineWidth(1.));
+
+             Canvas2dRe.save(ctx);
+             Canvas2dRe.translate(~x=0., ~y=height, ctx);
+             Renderer.render(ctx, layout, metrics);
+             Canvas2dRe.restore(ctx);
+
+             let {x, y, w, h} = Array.of_list(flatLayout)[cursor.index];
+             ctx->(setFillStyle(String, "black"));
+             ctx |> fillRect(~x, ~y, ~w=10., ~h);
+
+             Js.log(key);
+           },
+           document,
+         );
        };
 
        renderToCanvas("2x + 5 = 10");
-       open Webapi.Dom;
-
-       Document.addClickEventListener(
-         event => {
-           let x = MouseEvent.pageX(event);
-           let y = MouseEvent.pageY(event);
-
-           Js.log({j|x = $(x), y = $(y)|j});
-           ();
-         },
-         document,
-       );
 
        resolve();
      })
