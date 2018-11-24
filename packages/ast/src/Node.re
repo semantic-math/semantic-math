@@ -2,7 +2,7 @@
  * node and operator type definitions and operator precedence
  */
 type t =
-  | Apply(operator, list(t))
+  | Apply(operator, list(node))
   | Identifier(string)
   | Number(string)
   | Ellipses
@@ -24,7 +24,8 @@ and operator =
   | Comma
   | Fact
   | Prime
-  | Func(t);
+  | Func(node)
+and node = (int, t);
 
 let getOpPrecedence = op =>
   switch (op) {
@@ -59,8 +60,9 @@ let getOpPrecedence = op =>
 
 let makeApply = (op, children) => Apply(op, children);
 
-let rec toString = node =>
-  switch (node) {
+let rec toString = node => {
+  let (_, typ) = node;
+  switch (typ) {
   | Apply(op, children) =>
     "["
     ++ Js.Array.joinWith(
@@ -75,6 +77,7 @@ let rec toString = node =>
   | Number(value) => value
   | Ellipses => "..."
   }
+}
 and opToString = op =>
   switch (op) {
   | Nul => "nul"
@@ -94,25 +97,39 @@ and opToString = op =>
   | Subscript => "_"
   | Fact => "!"
   | Prime => "'"
-  | Func(name) => toString(name)
+  | Func(node) => toString(node)
   };
 
-let rec toJson = node =>
+let rec toJson = node => {
+  let (id, typ) = node;
   Json.Encode.(
-    switch (node) {
+    switch (typ) {
     | Apply(op, args) =>
       object_([
+        ("id", int(id)),
         ("type", string("Apply")),
         ("op", opToJson(op)),
         ("args", jsonArray(Array.map(toJson, Array.of_list(args)))),
       ])
     | Number(value) =>
-      object_([("type", string("Number")), ("value", string(value))])
+      object_([
+        ("id", int(id)),
+        ("type", string("Number")), 
+        ("value", string(value)),
+      ])
     | Identifier(name) =>
-      object_([("type", string("Identifier")), ("name", string(name))])
-    | Ellipses => object_([("type", string("Ellipses"))])
+      object_([
+        ("id", int(id)),
+        ("type", string("Identifier")),
+        ("name", string(name)),
+      ])
+    | Ellipses => object_([
+        ("id", int(id)),
+        ("type", string("Ellipses")),
+      ])
     }
-  )
+  );
+}
 and opToJson = op : Js.Json.t =>
   Json.Encode.(
     switch (op) {

@@ -8,15 +8,15 @@ type parser = {
   mutable index: int,
   peek: int => Token.t,
   consume: unit => Token.t,
-  parse: int => Node.t,
+  parse: int => Node.node,
   infixParseletMap: TokenTypeMap.t(infix_parselet),
   mutable prefixParseletMap: TokenTypeMap.t(prefix_parselet),
 }
 and infix_parselet = {
   op: Node.operator,
-  parse: (parser, Node.t) => Node.t,
+  parse: (parser, Node.node) => Node.node,
 }
-and prefix_parselet = {parse: (parser, Token.t) => Node.t};
+and prefix_parselet = {parse: (parser, Token.t) => Node.node};
 
 exception Unhandled;
 
@@ -88,8 +88,8 @@ let make = (prefixParseletMap, infixParseletMap) => {
     peek,
     consume,
     parse,
-    prefixParseletMap: prefixParseletMap,
-    infixParseletMap: infixParseletMap,
+    prefixParseletMap,
+    infixParseletMap,
   };
   parser;
 };

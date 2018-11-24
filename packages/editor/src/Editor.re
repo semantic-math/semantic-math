@@ -219,7 +219,7 @@ Js.Promise.(
          );
        };
 
-       renderToCanvas("2x + 5 = 10");
+       renderToCanvas("e^-(x^2+y^2) + 5/(x-1/x) = 10");
 
        resolve();
      })

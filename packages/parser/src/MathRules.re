@@ -1,24 +1,24 @@
 open Node;
-
+open UniqueId;
 type transformer = {
-  check: Node.t => bool,
-  transform: Node.t => Node.t,
+  check: Node.node => bool,
+  transform: Node.node => Node.node,
 };
 
-let isNumber = node =>
-  switch (node) {
+let isNumber = ((_, typ)) =>
+  switch (typ) {
   | Number(_) => true
   | _ => false
   };
 
-let isIdentifier = node =>
-  switch (node) {
+let isIdentifier = ((_, typ)) =>
+  switch (typ) {
   | Identifier(_) => true
   | _ => false
   };
 
-let rec isPolyTerm = node =>
-  switch (node) {
+let rec isPolyTerm = ((_, typ)) =>
+  switch (typ) {
   | Number(_) => true
   | Identifier(_) => true
   | Apply(Exp, [base, exp]) => isIdentifier(base) && isPolyTerm(exp)
@@ -29,88 +29,92 @@ let rec isPolyTerm = node =>
 
 exception NoCoefficient;
 
-let rec getCoeff = node =>
-  switch (node) {
-  | Number(_) => node
-  | Identifier(_) => Number("1")
-  | Apply(Exp, _) => Number("1")
-  | Apply(Neg, [arg]) => Apply(Neg, [getCoeff(arg)])
+let rec getCoeff = ((id, typ)) =>
+  switch (typ) {
+  | Number(_) => (id, typ)
+  | Identifier(_) => (genId(), Number("1"))
+  | Apply(Exp, _) => (genId(), Number("1"))
+  | Apply(Neg, [arg]) => (genId(), Apply(Neg, [getCoeff(arg)]))
   | Apply(Mul(t), args) =>
     switch (List.filter(isNumber, args)) {
-    | [] => Number("1")
+    | [] => (genId(), Number("1"))
     | [n] => n
-    | nums => Apply(Mul(t), nums)
+    | nums => (genId(), Apply(Mul(t), nums))
     }
   | _ => raise(NoCoefficient)
   };
 
 let is = (a, b) => a == b;
 
-let isNot = (a, b) => a != b;
+/* let isNot = (a, b) => a != b; */
 
 let simplifyAddZero = {
-  check: node =>
-    switch (node) {
-    | Apply(Add, children) => List.mem(Number("0"), children)
+  check: ((_, typ)) =>
+    switch (typ) {
+    | Apply(Add, children) =>
+      List.exists(((_, typ)) => typ == Number("0"), children)
     | _ => false
     },
-  transform: node =>
-    switch (node) {
+  transform: ((id, typ)) =>
+    switch (typ) {
     | Apply(Add, children) =>
-      switch (List.filter(isNot(Number("0")), children)) {
-      | [] => Number("0")
+      switch (List.filter(((_, typ)) => typ != Number("0"), children)) {
+      | [] => (genId(), Number("0"))
       | [arg] => arg
-      | args => Apply(Add, args)
+      | args => (genId(), Apply(Add, args))
       }
-    | _ => node
+    | _ => (id, typ)
     },
 };
 
 let simplifyMulOne = {
-  check: node =>
-    switch (node) {
-    | Apply(Mul(_), children) => List.mem(Number("1"), children)
+  check: ((_, typ)) =>
+    switch (typ) {
+    | Apply(Mul(_), children) =>
+      List.exists(((_, typ)) => typ == Number("1"), children)
     | _ => false
     },
-  transform: node =>
-    switch (node) {
+  transform: ((id, typ)) =>
+    switch (typ) {
     | Apply(Mul(t), children) =>
-      switch (List.filter(isNot(Number("1")), children)) {
-      | [] => Number("1")
+      switch (List.filter(((_, typ)) => typ != Number("1"), children)) {
+      | [] => (genId(), Number("1"))
       | [arg] => arg
-      | args => Apply(Mul(t), args)
+      | args => (genId(), Apply(Mul(t), args))
       }
-    | _ => node
+    | _ => (id, typ)
     },
 };
 
 let simplifyDivOne = {
-  check: node =>
-    switch (node) {
-    | Apply(Div, [_, Number("1")]) => true
+  check: ((_, typ)) =>
+    switch (typ) {
+    | Apply(Div, [_, (_, Number("1"))]) => true
     | _ => false
     },
-  transform: node =>
-    switch (node) {
+  transform: ((id, typ)) =>
+    switch (typ) {
     | Apply(Div, children) =>
       switch (children) {
-      | [n, Number("1")] => n
-      | _ => node
+      | [n, (_, Number("1"))] => n
+      | _ => (id, typ)
       }
-    | _ => node
+    | _ => (id, typ)
     },
 };
 
 let simplifyMulZero = {
-  check: node =>
-    switch (node) {
-    | Apply(Mul(_), children) => List.mem(Number("0"), children)
+  check: ((_, typ)) =>
+    switch (typ) {
+    | Apply(Mul(_), children) =>
+      List.exists(((_, typ)) => typ == Number("0"), children)
     | _ => false
     },
-  transform: node =>
-    switch (node) {
+  transform: ((id, typ)) =>
+    switch (typ) {
     | Apply(Mul(_), children) =>
-      List.mem(Number("0"), children) ? Number("0") : node
-    | _ => node
+      List.exists(((_, typ)) => typ == Number("0"), children) ?
+        (genId(), Number("0")) : (id, typ)
+    | _ => (id, typ)
     },
 };

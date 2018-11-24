@@ -2,16 +2,18 @@
  * MathParser - A specialized version of Parser for parsing math
  */
 open Node;
-
 open Parser;
+open UniqueId;
 
 let parsePostfix = (op, parser, left) => {
   parser.consume() |> ignore;
-  Apply(op, [left]);
+  (genId(), Apply(op, [left]));
 };
 
-let rec parseNaryInfix = (op, parser, left) =>
-  Apply(op, [left] @ parseNaryArgs(parser, op))
+let rec parseNaryInfix = (op, parser, left) => {
+  let typ = Apply(op, [left] @ parseNaryArgs(parser, op));
+  (genId(), typ);
+}
 and parseNaryArgs = (parser, op) => {
   let token = parser.peek(0);
   switch (token.t) {
@@ -32,10 +34,12 @@ and parseNaryArgs = (parser, op) => {
 
 let parseBinaryInfix = (op, parser, left) => {
   parser.consume() |> ignore;
-  switch (op) {
-  | Exp => Apply(op, [left, parser.parse(getOpPrecedence(op) - 1)]);
-  | _ => Apply(op, [left, parser.parse(getOpPrecedence(op))]);
-  }
+  let typ =
+    switch (op) {
+    | Exp => Apply(op, [left, parser.parse(getOpPrecedence(op) - 1)])
+    | _ => Apply(op, [left, parser.parse(getOpPrecedence(op))])
+    };
+  (genId(), typ);
 };
 
 let rec parseMulByParens = (parser: Parser.parser) => {
@@ -47,30 +51,39 @@ let rec parseMulByParens = (parser: Parser.parser) => {
   };
 };
 
-let postProcessMulByParens = (prevToken: Token.t, children) =>
-  switch (children) {
-  | [left, right] =>
-    switch (left, right) {
-    | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
-    | (Number(_), _) => Apply(Mul(`Implicit), children)
-    | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
-    | (Apply(Mul(`Implicit), factors), _) =>
-      /* Parse 2x sin(x) to [* 2 x [sin x]] */
-      switch (List.rev(factors)) {
-      | [hd, ...tl] =>
-        Apply(Mul(`Implicit), List.rev([Apply(Func(hd), [right])] @ tl))
-      | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
-      }
-    | _ =>
-      /* parse (a)(b) as multiplication for now */
-      /* TODO: allow (f + g)(x) to be parsed as a function */
-      switch (prevToken.t) {
-      | RIGHT_PAREN => Apply(Mul(`Implicit), children)
-      | _ => Apply(Func(left), [right])
-      }
-    }
-  | _ => Apply(Mul(`Implicit), children)
-  };
+let postProcessMulByParens =
+    (prevToken: Token.t, children: list(Node.node)): Node.node => {
+  let typ =
+    switch (children) {
+    | [left, right] =>
+      let (_, leftTyp) = left;
+      let (_, rightTyp) = right;
+      switch (leftTyp, rightTyp) {
+      | (Identifier(_), Apply(Comma, args)) => Apply(Func(left), args)
+      | (Number(_), _) => Apply(Mul(`Implicit), children)
+      | (Apply(Fact, _), _) => Apply(Mul(`Implicit), children)
+      | (Apply(Mul(`Implicit), factors), _) =>
+        /* Parse 2x sin(x) to [* 2 x [sin x]] */
+        switch (List.rev(factors)) {
+        | [hd, ...tl] =>
+          Apply(
+            Mul(`Implicit),
+            List.rev([(genId(), Apply(Func(hd), [right]))] @ tl),
+          )
+        | [] => raise(Unhandled) /* multiplication should always have 2 or more operands */
+        }
+      | _ =>
+        /* parse (a)(b) as multiplication for now */
+        /* TODO: allow (f + g)(x) to be parsed as a function */
+        switch (prevToken.t) {
+        | RIGHT_PAREN => Apply(Mul(`Implicit), children)
+        | _ => Apply(Func(left), [right])
+        }
+      };
+    | _ => Apply(Mul(`Implicit), children)
+    };
+  (genId(), typ);
+};
 
 let prefixParseletMap =
   TokenType.(
@@ -78,19 +91,21 @@ let prefixParseletMap =
     |> TokenTypeMap.add(
          MINUS,
          {
-           parse: (parser, _) =>
+           parse: (parser, _) => (
+             genId(),
              Apply(Neg, [parser.parse(getOpPrecedence(Neg))]),
+           ),
          },
        )
     |> TokenTypeMap.add(
          IDENTIFIER,
-         {parse: (_, token) => Identifier(token.value)},
+         {parse: (_, token) => (genId(), Identifier(token.value))},
        )
     |> TokenTypeMap.add(
          NUMBER,
-         {parse: (_, token) => Number(token.value)},
+         {parse: (_, token) => (genId(), Number(token.value))},
        )
-    |> TokenTypeMap.add(ELLIPSES, {parse: (_, _) => Ellipses})
+    |> TokenTypeMap.add(ELLIPSES, {parse: (_, _) => (genId(), Ellipses)})
     |> TokenTypeMap.add(
          LEFT_PAREN,
          {

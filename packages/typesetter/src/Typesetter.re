@@ -3,25 +3,27 @@
  */
 
 type typesetter = {
-  typeset: Node.t => Layout.node
+  typeset: Node.node => Layout.node
 };
 
 /* fontMetrics: Metrics.font_data */
 let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
   let rec typeset =
-        (~fontScale=1.0, node: Node.t): Layout.node => {
+        (~fontScale=1.0, node: Node.node): Layout.node => {
     open Layout;
     let fontSize = fontScale *. baseFontSize;
     let spaceSize = 0.2 *. fontSize;
     let xHeight = 0.65;
 
-    switch (node) {
+    let (_, typ) = node;
+    switch (typ) {
     | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
       let boxList =
         List.fold_left(
           (acc, arg) => {
+            let (_, argTyp) = arg;
             let larg =
-              switch (arg) {
+              switch (argTyp) {
               | Node.Apply(Node.Add | Node.Sub, _) =>
                 Box(
                   0.,
@@ -58,11 +60,13 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
     | Node.Apply(Node.Mul(`Implicit), args) =>
       let wrapFactors =
         List.exists(
-          arg =>
-            switch (arg) {
+          arg => {
+            let (_, argTyp) = arg;
+            switch (argTyp) {
             | Node.Apply(Node.Add | Node.Sub, _) => true
             | _ => false
-            },
+            };
+          },
           args,
         );
       let boxList =
@@ -115,8 +119,9 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           ),
         ]),
       );
-    | Node.Apply(Node.Neg, args) =>
-      switch (List.hd(args)) {
+    | Node.Apply(Node.Neg, args) => {
+      let (_, argTyp) = List.hd(args);
+      switch (argTyp) {
       | Node.Apply(Node.Add | Node.Sub, _) =>
         Box(
           0.,
@@ -135,9 +140,11 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
             typeset(~fontScale, List.hd(args)),
           ]),
         )
-      }
-    | Node.Apply(Node.Func(func), args) =>
-      switch (func) {
+      };
+    }
+    | Node.Apply(Node.Func(func), args) => {
+      let (_, funcTyp) = func;
+      switch (funcTyp) {
       | Node.Identifier(name) =>
         switch (name) {
         | "sqrt" =>
@@ -171,7 +178,8 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
             Glyph(')', fontSize, metrics),
           ]),
         )
-      }
+      };
+    }
     | Node.Apply(op, args) when op == Node.Eq =>
         let boxList =
         List.fold_left(

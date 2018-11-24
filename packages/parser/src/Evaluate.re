@@ -19,7 +19,7 @@ let rec evaluate =
   Node.(
     node =>
       switch (node) {
-      | Apply(op, children) =>
+      | (_, Apply(op, children)) =>
         let children = List.map(evaluate, children);
         switch (op) {
         | Add => children |> sum
@@ -32,21 +32,21 @@ let rec evaluate =
           /* TODO: handle user defined functions */
           let arg = List.hd(children);
           switch (fn) {
-          | Identifier(name) =>
+          | (_, Identifier(name)) =>
             switch (Data.funcForName(name)) {
             | Some(fn) => fn(arg)
             | None => raise(UndefinedFunction(name))
             }
-          | _ => raise(UnhandleFunction(fn))
+          | (_, typ) => raise(UnhandleFunction(typ))
           };
         | _ => raise(UnhandledOperation(op))
         };
-      | Identifier(name) =>
+      | (_, Identifier(name)) =>
         switch (Data.valueForName(name)) {
         | Some(value) => value
         | None => raise(UndefinedVariable(name))
         }
-      | Number(value) => float_of_string(value)
-      | _ => raise(UnhandledNode(node))
+      | (_, Number(value)) => float_of_string(value)
+      | (_, typ) => raise(UnhandledNode(typ))
       }
   );
