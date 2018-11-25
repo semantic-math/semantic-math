@@ -36,20 +36,20 @@ let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
     let availableSpace = w -. hlistWidth(content);
 
     List.fold_left(
-      (acc: list(rect), atom: Layout.node) =>
+      (acc: list(rect), (_, atom)) =>
         switch (atom) {
         | Glyph(_, _, _) =>
           let rect = {
             x: pen.x,
-            y: pen.y -. height(atom),
-            w: width(atom),
-            h: vsize(atom),
+            y: pen.y -. height((None, atom)),
+            w: width((None, atom)),
+            h: vsize((None, atom)),
           };
-          pen.x = pen.x +. width(atom);
+          pen.x = pen.x +. width((None, atom));
           acc @ [rect];
         | Box(shift, box) =>
           let rects = flatten(~dx=pen.x, ~dy=pen.y +. shift, box);
-          pen.x = pen.x +. width(atom);
+          pen.x = pen.x +. width((None, atom));
           acc @ rects;
         | Glue(_) =>
           pen.x = pen.x +. availableSpace /. 2.;
@@ -68,17 +68,17 @@ let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
   | {kind: VBox, content} =>
     pen.y = pen.y -. box.height;
     List.fold_left(
-      (acc: list(rect), atom: Layout.node) =>
+      (acc: list(rect), (_, atom)) =>
         switch (atom) {
         | Box(shift, box) =>
-          pen.y = pen.y +. height(atom);
+          pen.y = pen.y +. height((None, atom));
           let rects = flatten(~dx=pen.x, ~dy=pen.y +. shift, box);
-          pen.y = pen.y +. depth(atom);
+          pen.y = pen.y +. depth((None, atom));
           acc @ rects;
         | Rule({width: w, height: h, depth: d}) =>
-          pen.y = pen.y +. height(atom);
+          pen.y = pen.y +. height((None, atom));
           let rect = {x: pen.x, y: pen.y -. h, w, h: h +. d};
-          pen.y = pen.y +. depth(atom);
+          pen.y = pen.y +. depth((None, atom));
           acc @ [rect];
         | Kern(size) =>
           pen.y = pen.y +. size;
@@ -167,7 +167,7 @@ Js.Promise.(
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=0., ~y=height, ctx);
-         Renderer.render(ctx, layout, metrics);
+         Renderer.render(ctx, (None, layout), metrics);
          Canvas2dRe.restore(ctx);
 
          /**
@@ -176,7 +176,7 @@ Js.Promise.(
           */
          let cursor = {index: 0};
 
-         let {x, y, w, h} = Array.of_list(flatLayout)[cursor.index];
+         let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
          ctx->(setFillStyle(String, "black"));
          ctx |> fillRect(~x, ~y, ~w=10., ~h);
 
@@ -206,10 +206,10 @@ Js.Promise.(
 
              Canvas2dRe.save(ctx);
              Canvas2dRe.translate(~x=0., ~y=height, ctx);
-             Renderer.render(ctx, layout, metrics);
+             Renderer.render(ctx, (None, layout), metrics);
              Canvas2dRe.restore(ctx);
 
-             let {x, y, w, h} = Array.of_list(flatLayout)[cursor.index];
+             let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
              ctx->(setFillStyle(String, "black"));
              ctx |> fillRect(~x, ~y, ~w=10., ~h);
 

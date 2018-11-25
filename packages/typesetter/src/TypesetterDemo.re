@@ -32,7 +32,7 @@ Js.Promise.(
          Canvas2dRe.save(ctx);
          /* TODO: avoid having to do this translation before rendering */
          Canvas2dRe.translate(~x=0., ~y=height, ctx);
-         Renderer.render(ctx, box2, metrics);
+         Renderer.render(ctx, (None, box2), metrics);
          Canvas2dRe.restore(ctx);
        };
 

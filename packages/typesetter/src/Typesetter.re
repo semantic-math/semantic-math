@@ -15,7 +15,7 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
     let spaceSize = 0.2 *. fontSize;
     let xHeight = 0.65;
 
-    let (_, typ) = node;
+    let (id, typ) = node;
     switch (typ) {
     | Node.Apply(op, args) when op == Node.Add || op == Node.Sub =>
       let boxList =
@@ -25,14 +25,14 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
             let larg =
               switch (argTyp) {
               | Node.Apply(Node.Add | Node.Sub, _) =>
-                Box(
+                (None, Box(
                   0.,
                   hpackNat([
-                    Glyph('(', fontSize, metrics),
+                    (None, Glyph('(', fontSize, metrics)),
                     typeset(~fontScale, arg),
-                    Glyph(')', fontSize, metrics),
+                    (None, Glyph(')', fontSize, metrics)),
                   ]),
-                )
+                ))
               | _ => typeset(~fontScale, arg)
               };
             let lop =
@@ -46,9 +46,10 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
             | _ =>
               acc
               @ [
-                Kern(spaceSize *. fontScale),
-                Glyph(lop, fontSize, metrics),
-                Kern(spaceSize *. fontScale),
+                (None, Kern(spaceSize *. fontScale)),
+                /* TODO: create an id that links back each +/- to the AST node */
+                (None, Glyph(lop, fontSize, metrics)),
+                (None, Kern(spaceSize *. fontScale)),
                 larg,
               ]
             };
@@ -56,7 +57,7 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           [],
           args,
         );
-      Box(0., hpackNat(boxList));
+      (Some(id), Box(0., hpackNat(boxList)));
     | Node.Apply(Node.Mul(`Implicit), args) =>
       let wrapFactors =
         List.exists(
@@ -74,14 +75,14 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           (acc, arg) => {
             let larg =
               wrapFactors ?
-                Box(
+                (None, Box(
                   0.,
                   hpackNat([
-                    Glyph('(', fontSize, metrics),
+                    (None, Glyph('(', fontSize, metrics)),
                     typeset(~fontScale, arg),
-                    Glyph(')', fontSize, metrics),
+                    (None, Glyph(')', fontSize, metrics)),
                   ]),
-                ) :
+                )) :
                 typeset(~fontScale, arg);
             switch (acc) {
             | [] => [larg]
@@ -91,7 +92,7 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           [],
           args,
         );
-      Box(0., hpackNat(boxList));
+      (Some(id), Box(0., hpackNat(boxList)));
     | Node.Apply(Node.Div, [num, den]) =>
       let num = hpackNat([typeset(num)]);
       let den = hpackNat([typeset(den)]);
@@ -102,44 +103,44 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           num,
           den,
         );
-      Box(-18., frac);
+      (Some(id), Box(-18., frac));
     | Node.Apply(Node.Exp, [base, exp]) =>
       let expFontScale =
         switch (fontScale) {
         | 1.0 => 0.7
         | _ => 0.5
         };
-      Box(
+      (Some(id), Box(
         0.,
         hpackNat([
           typeset(~fontScale, base),
-          Box(
+          (None, Box(
             -. (xHeight *. baseFontSize *. expFontScale),
             hpackNat([typeset(~fontScale=expFontScale, exp)]),
-          ),
+          )),
         ]),
-      );
+      ));
     | Node.Apply(Node.Neg, args) => {
       let (_, argTyp) = List.hd(args);
       switch (argTyp) {
       | Node.Apply(Node.Add | Node.Sub, _) =>
-        Box(
+        (Some(id), Box(
           0.,
           hpackNat([
-            Glyph('-', fontSize, metrics),
-            Glyph('(', fontSize, metrics),
+            (None, Glyph('-', fontSize, metrics)),
+            (None, Glyph('(', fontSize, metrics)),
             typeset(~fontScale, List.hd(args)),
-            Glyph(')', fontSize, metrics),
+            (None, Glyph(')', fontSize, metrics)),
           ]),
-        )
+        ))
       | _ =>
-        Box(
+        (Some(id), Box(
           0.,
           hpackNat([
-            Glyph('-', fontSize, metrics),
+            (None, Glyph('-', fontSize, metrics)),
             typeset(~fontScale, List.hd(args)),
           ]),
-        )
+        ))
       };
     }
     | Node.Apply(Node.Func(func), args) => {
@@ -148,36 +149,36 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
       | Node.Identifier(name) =>
         switch (name) {
         | "sqrt" =>
-          Box(
+          (Some(id), Box(
             0.,
             hpackNat([
-              Glyph(Js.String.fromCharCode(0x221A).[0], fontSize, metrics),
-              Glyph('(', fontSize, metrics),
+              (None, Glyph(Js.String.fromCharCode(0x221A).[0], fontSize, metrics)),
+              (None, Glyph('(', fontSize, metrics)),
               typeset(~fontScale, List.hd(args)),
-              Glyph(')', fontSize, metrics),
+              (None, Glyph(')', fontSize, metrics)),
             ]),
-          )
+          ))
         | _ =>
-          Box(
+          (Some(id), Box(
             0.,
             hpackNat([
               typeset(~fontScale, func),
-              Glyph('(', fontSize, metrics),
+              (None, Glyph('(', fontSize, metrics)),
               typeset(~fontScale, List.hd(args)),
-              Glyph(')', fontSize, metrics),
+              (None, Glyph(')', fontSize, metrics)),
             ]),
-          )
+          ))
         }
       | _ =>
-        Box(
+        (Some(id), Box(
           0.,
           hpackNat([
             typeset(~fontScale, func),
-            Glyph('(', fontSize, metrics),
+            (None, Glyph('(', fontSize, metrics)),
             typeset(~fontScale, List.hd(args)),
-            Glyph(')', fontSize, metrics),
+            (None, Glyph(')', fontSize, metrics)),
           ]),
-        )
+        ))
       };
     }
     | Node.Apply(op, args) when op == Node.Eq =>
@@ -189,9 +190,9 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
             | _ =>
               acc
               @ [
-                Kern(spaceSize *. fontScale),
-                Glyph('=', fontSize, metrics),
-                Kern(spaceSize *. fontScale),
+                (None, Kern(spaceSize *. fontScale)),
+                (None, Glyph('=', fontSize, metrics)),
+                (None, Kern(spaceSize *. fontScale)),
                 typeset(~fontScale, arg),
               ]
             };
@@ -199,37 +200,39 @@ let make = (~baseFontSize=30., metrics: Metrics.metrics): typesetter => {
           [],
           args,
         );
-      Box(0., hpackNat(boxList));
+      (Some(id), Box(0., hpackNat(boxList)));
     | Node.Number(value) =>
-      Box(
+      (Some(id), Box(
         0.,
         hpackNat(
           Array.to_list(
             Array.map(
-              (c: string) => Glyph(c.[0], fontSize, metrics),
+              /* TODO: link back to AST node and index within its value */
+              (c: string) => (None, Glyph(c.[0], fontSize, metrics)),
               Js.String.split("", value),
             ),
           ),
         ),
-      )
+      ))
     | Node.Identifier(value) =>
       switch (value) {
-      | "pi" => Glyph(Js.String.fromCharCode(0x03c0).[0], fontSize, metrics)
-      | "theta" => Glyph(Js.String.fromCharCode(0x03b8).[0], fontSize, metrics)
+      | "pi" => (Some(id), Glyph(Js.String.fromCharCode(0x03c0).[0], fontSize, metrics))
+      | "theta" => (Some(id), Glyph(Js.String.fromCharCode(0x03b8).[0], fontSize, metrics))
       | _ =>
-        Box(
+        (Some(id), Box(
           0.,
           hpackNat(
             Array.to_list(
               Array.map(
-                (c: string) => Glyph(c.[0], fontSize, metrics),
+                /* TODO: link back to AST node and index within its value */
+                (c: string) => (None, Glyph(c.[0], fontSize, metrics)),
                 Js.String.split("", value),
               ),
             ),
           ),
-        )
+        ))
       }
-    | _ => Kern(0.)
+    | _ => (Some(id), Kern(0.))
     };
   };
     

@@ -4,6 +4,7 @@
  * - https://github.com/pkamenarsky/formulae
  */
 open Metrics;
+open UniqueId;
 
 type boxkind =
   | VBox
@@ -33,12 +34,13 @@ type glue_spec = {
   shrink: (dist, inf_order),
 };
 
-type node =
+type node_type =
   | Glyph(char, float, metrics) /* TODO: add 'font' as a param */
   | Kern(dist)
   | Rule(dim)
   | Box(dist, box)
   | Glue(glue_spec)
+and node = (option(int), node_type)
 and box = {
   kind: boxkind,
   width: dist,
@@ -51,8 +53,8 @@ type hlist = list(node);
 
 type vlist = list(node);
 
-let width = a =>
-  switch (a) {
+let width = ((_, typ): node) =>
+  switch (typ) {
   | Glyph(char, fontSize, metrics) => metrics.getCharWidth(char, fontSize)
   | Kern(size) => size
   | Rule({width}) => width
@@ -60,8 +62,8 @@ let width = a =>
   | Glue({size}) => size
   };
 
-let height = a => {
-  switch (a) {
+let height = ((_, typ): node) => {
+  switch (typ) {
   | Glyph(char, fontSize, metrics) => metrics.getCharHeight(char, fontSize)
   | Rule({height}) => height
   | Box(shift, {height}) => height -. shift
@@ -69,24 +71,24 @@ let height = a => {
   };
 };
 
-let depth = a =>
-  switch (a) {
+let depth = ((_, typ): node) =>
+  switch (typ) {
   | Glyph(char, fontSize, metrics) => metrics.getCharDepth(char, fontSize)
   | Rule({depth}) => depth
   | Box(shift, {depth}) => depth +. shift
   | _ => 0.
   };
 
-let vwidth = a =>
-  switch (a) {
+let vwidth = ((_, typ): node) =>
+  switch (typ) {
   | Glyph(char, fontSize, metrics) => metrics.getCharWidth(char, fontSize)
   | Rule({width}) => width
   | Box(shift, {width}) => width +. shift
   | _ => 0.
   };
 
-let vsize = a =>
-  switch (a) {
+let vsize = ((_, typ): node) =>
+  switch (typ) {
   | Glyph(char, fontSize, metrics) => metrics.getMetrics(char, fontSize).height
   | Rule({height, depth}) => height +. depth
   | Box(_, {height, depth}) => height +. depth
@@ -116,7 +118,7 @@ let makebox = (kind, {height, depth, width}: dim, content) => {
 let hbox = makebox(HBox);
 let vbox = makebox(VBox);
 
-let hpackNat = nl => 
+let hpackNat = (nl: list(node)) => 
   hbox(
     {
       width: hlistWidth(nl),
@@ -128,7 +130,7 @@ let hpackNat = nl =>
 
 let box0 = (box) => Box(0., box);
 
-let makeList = (dist, box) => [Kern(dist), box0(box)];
+let makeList = (dist, box) => [(None, Kern(dist)), (None, box0(box))];
 
 let makeVBox = (width, node, upList, dnList) => {
   let height = vlistVsize(upList) +. height(node);
@@ -149,14 +151,14 @@ let rebox = (newWidth, box) => {
   if (newWidth == width) {
     box;
   } else if (content == []) {
-    hpackNat([Kern(newWidth)]);
+    hpackNat([(None, Kern(newWidth))]);
   } else {
     let hl = switch(kind) {
-    | VBox => [Box(0., box)] /* get the shift of the incoming box */
+    | VBox => [(None, Box(0., box))] /* get the shift of the incoming box */
     | HBox => content
     };
     let glue = Glue(ssGlue);
-    hbox({width: newWidth, height, depth}, [glue] @ hl @ [glue]);
+    hbox({width: newWidth, height, depth}, [(None, glue)] @ hl @ [(None, glue)]);
   };
 };
 
@@ -172,7 +174,7 @@ let makeFract = (thickness, width, numBox: box, denBox: box) => {
   let distNum = axisNum -. halfThickness -. numBox.depth; /* distance between fraction bar and numerator */
   let distDen = axisDen -. halfThickness -. denBox.height; distance between fraction bar and denominator */
   
-  let stroke = Rule({height: halfThickness, depth: halfThickness, width});
+  let stroke = (None, Rule({height: halfThickness, depth: halfThickness, width}));
   let numBox' = rebox(width, numBox);
   let denBox' = rebox(width, denBox);
   makeVBox(width, stroke, makeList(10., numBox'), makeList(10., denBox'));
