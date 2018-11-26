@@ -65,6 +65,8 @@ let getLeafNodes = ast => {
 
 type cursor = {mutable index: int};
 
+exception UnhandledEditorError;
+
 let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
   open Layout;
   let pen = {x: dx, y: dy};
@@ -240,41 +242,56 @@ Js.Promise.(
              | "7"
              | "8"
              | "9" =>
-               ast :=
+               let result =
                  Transform.transform(
-                   node => {
+                   (~path as _, node) =>
                      if (node == Array.of_list(leafNodes^)[cursor.index]) {
                        let (id, typ) = node;
                        switch (typ) {
-                       | Number(value) => (id, Number(value ++ key))
-                       | _ => node
+                       | Number(value) => Some((id, Number(value ++ key)))
+                       | _ => Some(node)
                        };
                      } else {
-                       node;
-                     };
-                   },
+                       Some(node);
+                     },
                    ast^,
-                 )
-             | "Backspace" =>
+                 );
                ast :=
+                 (
+                   switch (result) {
+                   | Some(newAst) => newAst
+                   | None => raise(UnhandledEditorError)
+                   }
+                 );
+             | "Backspace" =>
+               let result =
                  Transform.transform(
-                   node =>
+                   (~path as _, node) =>
                      if (node == Array.of_list(leafNodes^)[cursor.index]) {
                        let (id, typ) = node;
                        switch (typ) {
-                       | Number(value) => (
+                       | Number(value) when String.length(value) > 0 =>
+                         Some((
                            id,
                            Number(
                              String.sub(value, 0, String.length(value) - 1),
                            ),
-                         )
-                       | _ => node
+                         ))
+                       | Number("") => None
+                       | _ => Some(node)
                        };
                      } else {
-                       node;
+                       Some(node);
                      },
                    ast^,
-                 )
+                 );
+               ast :=
+                 (
+                   switch (result) {
+                   | Some(newAst) => newAst
+                   | None => raise(UnhandledEditorError)
+                   }
+                 );
              | _ => ()
              };
 
