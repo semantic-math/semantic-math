@@ -3,7 +3,7 @@ type point = {
   mutable y: float,
 };
 
-let debug = true;
+let debug = false;
 
 /* TODO: create a new pen each time and use ctx's save() and restore() methods */
 let rec render = (ctx, (_, box), metrics) => {

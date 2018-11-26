@@ -1,3 +1,5 @@
+open Node;
+
 let math = "1+x+x^2+x^3";
 let tokens = Lexer.lex(math);
 let ast = MathParser.parse(tokens);
@@ -18,10 +20,47 @@ type point = {
 };
 
 type rect = {
+  id: option(int),
   x: float,
   y: float,
   w: float,
   h: float,
+};
+
+/**
+ * TODO:
+ * - find the leaf nodes in the AST that have ids
+ * - find the matching layout node
+ * - use the layout node's position to place the cursor
+ *
+ * - use left/right to navigate between leaf nodes
+ * - use number/letter keys to update leaf nodes
+ */
+
+let rec foldTree = (visitor, accum, node) => {
+  let (_, typ) = node;
+  switch (typ) {
+  | Node.Apply(_, children) =>
+    let result = List.fold_left(foldTree(visitor), accum, children);
+    visitor(result, node);
+  | _ => visitor(accum, node)
+  };
+};
+
+let getLeafNodes = ast => {
+  let leafNodes =
+    foldTree(
+      (accum, node) => {
+        let (_, typ) = node;
+        switch (typ) {
+        | Apply(_, _) => accum
+        | _ => accum @ [node]
+        };
+      },
+      [],
+      ast,
+    );
+  leafNodes;
 };
 
 type cursor = {mutable index: int};
@@ -36,10 +75,11 @@ let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
     let availableSpace = w -. hlistWidth(content);
 
     List.fold_left(
-      (acc: list(rect), (_, atom)) =>
+      (acc: list(rect), (id, atom)) =>
         switch (atom) {
         | Glyph(_, _, _) =>
           let rect = {
+            id,
             x: pen.x,
             y: pen.y -. height((None, atom)),
             w: width((None, atom)),
@@ -68,7 +108,7 @@ let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
   | {kind: VBox, content} =>
     pen.y = pen.y -. box.height;
     List.fold_left(
-      (acc: list(rect), (_, atom)) =>
+      (acc: list(rect), (id, atom)) =>
         switch (atom) {
         | Box(shift, box) =>
           pen.y = pen.y +. height((None, atom));
@@ -77,7 +117,7 @@ let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
           acc @ rects;
         | Rule({width: w, height: h, depth: d}) =>
           pen.y = pen.y +. height((None, atom));
-          let rect = {x: pen.x, y: pen.y -. h, w, h: h +. d};
+          let rect = {id, x: pen.x, y: pen.y -. h, w, h: h +. d};
           pen.y = pen.y +. depth((None, atom));
           acc @ [rect];
         | Kern(size) =>
@@ -100,11 +140,12 @@ Js.Promise.(
 
        let renderToCanvas = math => {
          open Webapi.Canvas;
-         open Canvas2d;
 
          let tokens = Lexer.lex(math);
-         let ast = MathParser.parse(tokens);
-         let layout = Layout.hpackNat([typsetter.typeset(ast)]);
+         let ast = ref(MathParser.parse(tokens));
+         let leafNodes = ref(getLeafNodes(ast^));
+         List.iter(node => Js.log(Node.toString(node)), leafNodes^);
+         let layout = Layout.hpackNat([typsetter.typeset(ast^)]);
 
          Js.log(layout);
 
@@ -117,7 +158,7 @@ Js.Promise.(
            );
 
          /* enable retina mode */
-         ctx |> scale(~x=2., ~y=2.);
+         ctx |> Canvas2d.scale(~x=2., ~y=2.);
 
          /* TODO: avoid having to pass in the height */
          let flatLayout = flatten(~dy=layout.height, layout);
@@ -143,27 +184,27 @@ Js.Promise.(
                flatLayout,
              );
 
-             Js.log({j|x = $(x), y = $(y)|j});
+             /* Js.log({j|x = $(x), y = $(y)|j}); */
              ();
            },
            document,
          );
 
          /* highlight bounding boxes of glyphs and rules */
-         ctx->(setFillStyle(String, "#FFFF00"));
+         ctx->(Canvas2d.setFillStyle(String, "#FFFF00"));
          List.iter(
            rect => {
              let {x, y, w, h} = rect;
-             Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j});
+             /* Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j}); */
              ctx |> Canvas2d.fillRect(~x, ~y, ~w, ~h);
            },
            flatLayout,
          );
 
          /* set styles */
-         ctx->(setStrokeStyle(String, "magenta"));
-         ctx->(setFillStyle(String, "#0000FF"));
-         ctx->(lineWidth(1.));
+         ctx->(Canvas2d.setStrokeStyle(String, "magenta"));
+         ctx->(Canvas2d.setFillStyle(String, "#0000FF"));
+         ctx->(Canvas2d.lineWidth(1.));
 
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=0., ~y=height, ctx);
@@ -177,32 +218,85 @@ Js.Promise.(
          let cursor = {index: 0};
 
          let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
-         ctx->(setFillStyle(String, "black"));
-         ctx |> fillRect(~x, ~y, ~w=10., ~h);
+         ctx->(Canvas2d.setFillStyle(String, "black"));
+         ctx |> Canvas2d.fillRect(~x, ~y, ~w=10., ~h);
 
          Document.addKeyDownEventListener(
            event => {
+             open Node;
              let key = KeyboardEvent.key(event);
              switch (key) {
              | "ArrowLeft" => cursor.index = max(0, cursor.index - 1)
              | "ArrowRight" =>
-               cursor.index = min(List.length(flatLayout) - 1, cursor.index + 1)
+               cursor.index =
+                 min(List.length(flatLayout) - 1, cursor.index + 1)
+             | "0"
+             | "1"
+             | "2"
+             | "3"
+             | "4"
+             | "5"
+             | "6"
+             | "7"
+             | "8"
+             | "9" =>
+               ast :=
+                 Transform.transform(
+                   node =>
+                     if (node == List.hd(leafNodes^)) {
+                       let (id, typ) = node;
+                       switch (typ) {
+                       | Number(value) => (id, Number(value ++ key))
+                       | _ => node
+                       };
+                     } else {
+                       node;
+                     },
+                   ast^,
+                 )
+             | "Backspace" =>
+               ast :=
+                 Transform.transform(
+                   node =>
+                     if (node == List.hd(leafNodes^)) {
+                       let (id, typ) = node;
+                       switch (typ) {
+                       | Number(value) => (
+                           id,
+                           Number(
+                             String.sub(value, 0, String.length(value) - 1),
+                           ),
+                         )
+                       | _ => node
+                       };
+                     } else {
+                       node;
+                     },
+                   ast^,
+                 )
              | _ => ()
              };
 
-             ctx->(setFillStyle(String, "#FFFF00"));
+             leafNodes := getLeafNodes(ast^);
+             let layout = Layout.hpackNat([typsetter.typeset(ast^)]);
+
+             ctx
+             ->(
+                 Canvas2d.clearRect(~x=0., ~y=0., ~w=width, ~h=height +. depth)
+               );
+             ctx->(Canvas2d.setFillStyle(String, "#FFFF00"));
              List.iter(
                rect => {
                  let {x, y, w, h} = rect;
-                 Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j});
+                 /* Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j}); */
                  ctx |> Canvas2d.fillRect(~x, ~y, ~w, ~h);
                },
                flatLayout,
              );
 
-             ctx->(setStrokeStyle(String, "magenta"));
-             ctx->(setFillStyle(String, "#0000FF"));
-             ctx->(lineWidth(1.));
+             ctx->(Canvas2d.setStrokeStyle(String, "magenta"));
+             ctx->(Canvas2d.setFillStyle(String, "#0000FF"));
+             ctx->(Canvas2d.lineWidth(1.));
 
              Canvas2dRe.save(ctx);
              Canvas2dRe.translate(~x=0., ~y=height, ctx);
@@ -210,8 +304,8 @@ Js.Promise.(
              Canvas2dRe.restore(ctx);
 
              let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
-             ctx->(setFillStyle(String, "black"));
-             ctx |> fillRect(~x, ~y, ~w=10., ~h);
+             ctx->(Canvas2d.setFillStyle(String, "black"));
+             ctx |> Canvas2d.fillRect(~x, ~y, ~w=10., ~h);
 
              Js.log(key);
            },
@@ -219,7 +313,7 @@ Js.Promise.(
          );
        };
 
-       renderToCanvas("e^-(x^2+y^2) + 5/(x-1/x) = 10");
+       renderToCanvas("2x + 5 = 10");
 
        resolve();
      })

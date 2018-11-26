@@ -7,10 +7,10 @@
 let rec transform = (visitor, node) =>
   Node.(
     switch (node) {
-    | (_, Apply(op, children)) =>
+    | (id, Apply(op, children)) =>
       let newChildren = List.map(transform(visitor), children);
       let apply = makeApply(op, newChildren);
-      visitor((UniqueId.genId(), apply));
+      visitor((id, apply));
     | _ => visitor(node)
     }
   );
