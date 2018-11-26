@@ -242,8 +242,8 @@ Js.Promise.(
              | "9" =>
                ast :=
                  Transform.transform(
-                   node =>
-                     if (node == List.hd(leafNodes^)) {
+                   node => {
+                     if (node == Array.of_list(leafNodes^)[cursor.index]) {
                        let (id, typ) = node;
                        switch (typ) {
                        | Number(value) => (id, Number(value ++ key))
@@ -251,14 +251,15 @@ Js.Promise.(
                        };
                      } else {
                        node;
-                     },
+                     };
+                   },
                    ast^,
                  )
              | "Backspace" =>
                ast :=
                  Transform.transform(
                    node =>
-                     if (node == List.hd(leafNodes^)) {
+                     if (node == Array.of_list(leafNodes^)[cursor.index]) {
                        let (id, typ) = node;
                        switch (typ) {
                        | Number(value) => (
@@ -279,6 +280,8 @@ Js.Promise.(
 
              leafNodes := getLeafNodes(ast^);
              let layout = Layout.hpackNat([typsetter.typeset(ast^)]);
+
+             /* TODO: update the canvas size if the layout dimensions change */
 
              ctx
              ->(
