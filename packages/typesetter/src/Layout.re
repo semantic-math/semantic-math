@@ -179,3 +179,51 @@ let makeFract = (thickness, width, numBox: box, denBox: box) => {
   let denBox' = rebox(width, denBox);
   makeVBox(width, stroke, makeList(10., numBox'), makeList(10., denBox'));
 };
+
+let rec toJson = (node: node): Js.Json.t => {
+  let (id, typ) = node;
+  Json.Encode.(
+    switch (typ) {
+      | Box(_, box) => 
+        object_([
+          ("id", nullable(int, id)),
+          ("type", string("Box")),
+          ("kind", switch(box.kind) {
+          | VBox => string("VBox")
+          | HBox => string("HBox")
+          }),
+          ("width", Json.Encode.float(box.width)),
+          ("height", Json.Encode.float(box.height)),
+          ("depth", Json.Encode.float(box.depth)),
+          ("content", jsonArray(Array.map(toJson, Array.of_list(box.content))))
+        ]);
+      | Glyph(char, size, _) =>
+        object_([
+          ("id", nullable(int, id)),
+          ("type", string("Glyph")),
+          ("char", Json.Encode.char(char)),
+          ("size", Json.Encode.float(size)),
+        ])
+      | Rule(dim) => 
+        object_([
+          ("id", nullable(int, id)),
+          ("type", string("Rule")),
+          ("width", Json.Encode.float(dim.width)),
+          ("height", Json.Encode.float(dim.height)),
+          ("depth", Json.Encode.float(dim.depth)),
+        ])
+      | Kern(dist) =>
+        object_([
+          ("id", nullable(int, id)),
+          ("type", string("Kern")),
+          ("dist", Json.Encode.float(dist)),
+        ])
+      | Glue(spec) =>
+        object_([
+          ("id", nullable(int, id)),
+          ("type", string("Glue")),
+          ("size", Json.Encode.float(spec.size)),
+        ])
+      }
+  );
+}

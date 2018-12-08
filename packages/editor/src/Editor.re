@@ -147,9 +147,11 @@ Js.Promise.(
          let ast = ref(MathParser.parse(tokens));
          let leafNodes = ref(getLeafNodes(ast^));
          List.iter(node => Js.log(Node.toString(node)), leafNodes^);
-         let layout = Layout.hpackNat([typsetter.typeset(ast^)]);
+         let box = typsetter.typeset(ast^);
+         let layout = Layout.hpackNat([box]);
 
          Js.log(layout);
+         Js.log(Layout.toJson(box));
 
          /* TODO: replace with function to get full height */
          let {Layout.width, Layout.height, Layout.depth} = layout;
@@ -225,7 +227,6 @@ Js.Promise.(
 
          Document.addKeyDownEventListener(
            event => {
-             open Node;
              let key = KeyboardEvent.key(event);
              switch (key) {
              | "ArrowLeft" => cursor.index = max(0, cursor.index - 1)
@@ -333,7 +334,7 @@ Js.Promise.(
          );
        };
 
-       renderToCanvas("2x + 5 = 10");
+       renderToCanvas("1.23 + 0.09");
 
        resolve();
      })
