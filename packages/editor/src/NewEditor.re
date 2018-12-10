@@ -17,10 +17,14 @@ type node =
   | Glyph(int, char);
 
 let ctx = CanvasRenderer.makeContext(1000, 600);
+
+let cursorId = ref(genId());
+let cursor = ref(7);
+
 let ast =
   ref(
     Row(
-      genId(),
+      cursorId^,
       [
         Glyph(genId(), '2'),
         Glyph(genId(), 'x'),
@@ -69,11 +73,15 @@ let rec transform = (visitor: visitor, node): option(node) =>
   | _ => visitor(node)
   };
 
-/* type cursor = {
-     mutable id: int,
-     mutable index: int,
-   }; */
-let cursor = ref(7);
+let rec traverse = (visitor: node => unit, node): unit => {
+  switch (node) {
+  | Row(_, children) => List.iter(traverse(visitor), children)
+  | Sup(_, children) => List.iter(traverse(visitor), children)
+  | Sub(_, children) => List.iter(traverse(visitor), children)
+  | _ => ()
+  };
+  visitor(node);
+};
 
 exception Unhandled;
 
@@ -112,10 +120,10 @@ Js.Promise.(
          let pen = {x: 0., y: 100.};
          let rec render = node =>
            switch (node) {
-           | Sup(_, children) =>
+           | Sup(id, children) =>
              List.iteri(
                (i, child) => {
-                 if (cursor^ == i) {
+                 if (cursor^ == i && cursorId^ == id) {
                    ctx
                    |> Canvas2d.fillRect(
                         ~x=pen.x,
@@ -142,7 +150,7 @@ Js.Promise.(
                },
                children,
              );
-             if (cursor^ == List.length(children)) {
+             if (cursor^ == List.length(children) && cursorId^ == id) {
                ctx
                |> Canvas2d.fillRect(
                     ~x=pen.x,
@@ -151,10 +159,10 @@ Js.Promise.(
                     ~h=60.,
                   );
              };
-           | Row(_, children) =>
+           | Row(id, children) =>
              List.iteri(
                (i, child) => {
-                 if (cursor^ == i) {
+                 if (cursor^ == i && cursorId^ == id) {
                    ctx
                    |> Canvas2d.fillRect(
                         ~x=pen.x,
@@ -181,7 +189,7 @@ Js.Promise.(
                },
                children,
              );
-             if (cursor^ == List.length(children)) {
+             if (cursor^ == List.length(children) && cursorId^ == id) {
                ctx
                |> Canvas2d.fillRect(
                     ~x=pen.x,
@@ -219,16 +227,84 @@ Js.Promise.(
                  );
                cursor := cursor^ - 1;
              }
-           | "ArrowLeft" => cursor := Js_math.max_int(0, cursor^ - 1)
-           | "ArrowRight" =>
-             ();
-             switch (ast^) {
-             | Row(_, children) =>
-               cursor := Js_math.min_int(List.length(children), cursor^ + 1)
+           | "ArrowLeft" =>
+            traverse(
+               node =>
+                 switch (node) {
+                 | Row(id, children) =>
+                   if (id == cursorId^) {
+                     let child = List.nth(children, cursor^ - 1)
+                     switch (child) {
+                     | Glyph(_, _) =>
+                       cursor := Js_math.max_int(0, cursor^ - 1);
+                     | Sup(id, children) =>
+                       cursor := List.length(children);
+                       cursorId := id;
+                     | _ => raise(Unhandled)
+                     };
+                   }
+                 | Sup(id, children) =>
+                   if (id == cursorId^) {
+                     let child = List.nth(children, cursor^ - 1);
+                     switch (child) {
+                     | Glyph(_, _) =>
+                       cursor := Js_math.max_int(0, cursor^ - 1);
+                     | Sup(id, children) =>
+                       cursor := List.length(children);
+                       cursorId := id;
+                     | _ => raise(Unhandled)
+                     };
+                   }
+                 | Glyph(_, _) => ()
+                 | _ => raise(Unhandled)
+                 },
+               ast^,
+             )
+             /* switch (ast^) {
+             | Row(id, _) =>
+               if (id == cursorId^) {
+                 cursor := Js_math.max_int(0, cursor^ - 1);
+               }
              | _ => raise(Unhandled)
-             };
+             } */
+           | "ArrowRight" =>
+             traverse(
+               node =>
+                 switch (node) {
+                 | Row(id, children) =>
+                   if (id == cursorId^) {
+                     let child = List.nth(children, cursor^);
+                     switch (child) {
+                     | Glyph(_, _) =>
+                       cursor :=
+                         Js_math.min_int(List.length(children), cursor^ + 1)
+                     | Sup(id, _) =>
+                       cursor := 0;
+                       cursorId := id;
+                     | _ => raise(Unhandled)
+                     };
+                   }
+                 | Sup(id, children) =>
+                   if (id == cursorId^) {
+                     let child = List.nth(children, cursor^);
+                     switch (child) {
+                     | Glyph(_, _) =>
+                       cursor :=
+                         Js_math.min_int(List.length(children), cursor^ + 1)
+                     | Sup(id, _) =>
+                       cursor := 0;
+                       cursorId := id;
+                     | _ => raise(Unhandled)
+                     };
+                   }
+                 | Glyph(_, _) => ()
+                 | _ => raise(Unhandled)
+                 },
+               ast^,
+             )
            | "^" =>
-             let power = Sup(genId(), [Glyph(genId(), '2')]);
+             let power =
+               Sup(genId(), [Glyph(genId(), '2'), Glyph(genId(), '4')]);
              ast :=
                (
                  switch (ast^) {
@@ -237,6 +313,7 @@ Js.Promise.(
                  | _ => raise(Unhandled)
                  }
                );
+             Js.log(ast);
              cursor := cursor^ + 1;
            | _ =>
              ast :=
