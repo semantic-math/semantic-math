@@ -9,9 +9,37 @@ type point = {
   mutable y: float,
 };
 
+type node =
+  | Row(list(node))
+  | Sup(list(node))
+  | Sub(list(node))
+  | Glyph(char);
+
 let ctx = CanvasRenderer.makeContext(1000, 600);
-let msg = ref("Hello, world!");
-let cursor = ref(String.length(msg^));
+let ast =
+  ref([
+    Glyph('2'),
+    Glyph('x'),
+    Glyph('+'),
+    Glyph('5'),
+    Glyph('='),
+    Glyph('1'),
+    Glyph('0'),
+  ]);
+
+let cursor = ref(List.length(ast^));
+
+let rec remove_at = (n: int, l: list('a)) =>
+  switch(l) {
+  | [] => []
+  | [h, ...t] => n == 0 ? t : [h, ...remove_at(n - 1, t)]
+  };
+
+let rec insert_at = (n: int, x: 'a, l: list('a)) =>
+  switch (l) {
+  | [] => []
+  | [h, ...t] => n == 0 ? [h, x, ...t] : [h, ...insert_at(n - 1, x, t)]
+  };
 
 Js.Promise.(
   Fetch.fetch("/packages/typesetter/metrics/comic-sans.json")
@@ -30,10 +58,12 @@ Js.Promise.(
          ctx->(Canvas2d.font("60px comic sans ms"));
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
+         Js.log(cursor^);
+
          /* typeset stuff */
          let pen = {x: 0., y: 100.};
-         String.iteri(
-           (i, c) => {
+         List.iteri(
+           (i, child) => {
              if (cursor^ == i) {
                ctx
                |> Canvas2d.fillRect(
@@ -43,14 +73,18 @@ Js.Promise.(
                     ~h=60.,
                   );
              };
-
-             ctx |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
-             pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+             switch (child) {
+             | Glyph(c) =>
+               ctx
+               |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
+               pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+             | _ => ignore()
+             };
            },
-           msg^,
+           ast^,
          );
 
-         if (cursor^ == String.length(msg^)) {
+         if (cursor^ == List.length(ast^)) {
            ctx
            |> Canvas2d.fillRect(
                 ~x=pen.x,
@@ -74,19 +108,14 @@ Js.Promise.(
            | "Control" => ignore()
            | "Backspace" =>
              if (cursor^ > 0) {
-               msg :=
-                 String.sub(msg^, 0, cursor^ - 1)
-                 ++ String.sub(msg^, cursor^, String.length(msg^) - cursor^);
+               ast := remove_at(cursor^ - 1, ast^)
                cursor := cursor^ - 1;
              }
            | "ArrowLeft" => cursor := Js_math.max_int(0, cursor^ - 1)
            | "ArrowRight" =>
-             cursor := Js_math.min_int(String.length(msg^), cursor^ + 1)
+             cursor := Js_math.min_int(List.length(ast^), cursor^ + 1)
            | _ =>
-             msg :=
-               String.sub(msg^, 0, cursor^)
-               ++ key
-               ++ String.sub(msg^, cursor^, String.length(msg^) - cursor^);
+             ast := insert_at(cursor^ - 1, Glyph(String.get(key, 0)), ast^);
              cursor := cursor^ + 1;
            };
 
