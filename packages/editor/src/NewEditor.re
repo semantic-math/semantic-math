@@ -3,6 +3,7 @@ Js.log("NewEditor");
 open Webapi.Canvas;
 open Webapi.Dom;
 open Metrics;
+open UniqueId;
 
 type point = {
   mutable x: float,
@@ -10,27 +11,74 @@ type point = {
 };
 
 type node =
-  | Row(list(node))
-  | Sup(list(node))
-  | Sub(list(node))
-  | Glyph(char);
+  | Row(int, list(node))
+  | Sup(int, list(node))
+  | Sub(int, list(node))
+  | Glyph(int, char);
 
 let ctx = CanvasRenderer.makeContext(1000, 600);
 let ast =
-  ref([
-    Glyph('2'),
-    Glyph('x'),
-    Glyph('+'),
-    Glyph('5'),
-    Glyph('='),
-    Glyph('1'),
-    Glyph('0'),
-  ]);
+  ref(
+    Row(
+      genId(),
+      [
+        Glyph(genId(), '2'),
+        Glyph(genId(), 'x'),
+        Glyph(genId(), '+'),
+        Glyph(genId(), '5'),
+        Glyph(genId(), '='),
+        Glyph(genId(), '1'),
+        Glyph(genId(), '0'),
+      ],
+    ),
+  );
 
-let cursor = ref(List.length(ast^));
+let rec fold_left = (i: int, f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
+  switch (l) {
+  | [] => accu
+  | [h, ...t] => fold_left(i + 1, f, f(accu, i + 1, h), t)
+  };
+
+let fold_left = (f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
+  fold_left(0, f, accu, l);
+
+/* TODO: create function to transform the ast */
+type visitor = node => option(node);
+
+let rec transform = (visitor: visitor, node): option(node) =>
+  switch (node) {
+  | Row(id, children) =>
+    let newChildren =
+      List.fold_left(
+        (acc: list(node), child) =>
+          switch (transform(visitor, child)) {
+          | Some(node) => acc @ [node]
+          | None => acc
+          },
+        [],
+        children,
+      );
+    if (List.length(newChildren) > 1) {
+      let row = Row(id, newChildren);
+      visitor(row);
+    } else if (List.length(newChildren) == 1) {
+      Some(List.hd(newChildren));
+    } else {
+      None;
+    };
+  | _ => visitor(node)
+  };
+
+/* type cursor = {
+     mutable id: int,
+     mutable index: int,
+   }; */
+let cursor = ref(7);
+
+exception Unhandled;
 
 let rec remove_at = (n: int, l: list('a)) =>
-  switch(l) {
+  switch (l) {
   | [] => []
   | [h, ...t] => n == 0 ? t : [h, ...remove_at(n - 1, t)]
   };
@@ -62,9 +110,39 @@ Js.Promise.(
 
          /* typeset stuff */
          let pen = {x: 0., y: 100.};
-         List.iteri(
-           (i, child) => {
-             if (cursor^ == i) {
+         let rec render = node =>
+           switch (node) {
+           | Sup(_, children) =>
+             List.iteri(
+               (i, child) => {
+                 if (cursor^ == i) {
+                   ctx
+                   |> Canvas2d.fillRect(
+                        ~x=pen.x,
+                        ~y=pen.y -. 0.85 *. 60.,
+                        ~w=2.,
+                        ~h=60.,
+                      );
+                 };
+                 switch (child) {
+                 | Glyph(_, c) =>
+                   ctx
+                   |> Canvas2d.fillText(
+                        String.make(1, c),
+                        ~x=pen.x,
+                        ~y=pen.y,
+                      );
+                   pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+                 | Sup(_, _) =>
+                   pen.y = pen.y -. 30.;
+                   render(child);
+                   pen.y = pen.y +. 30.;
+                 | _ => ignore()
+                 };
+               },
+               children,
+             );
+             if (cursor^ == List.length(children)) {
                ctx
                |> Canvas2d.fillRect(
                     ~x=pen.x,
@@ -73,26 +151,49 @@ Js.Promise.(
                     ~h=60.,
                   );
              };
-             switch (child) {
-             | Glyph(c) =>
+           | Row(_, children) =>
+             List.iteri(
+               (i, child) => {
+                 if (cursor^ == i) {
+                   ctx
+                   |> Canvas2d.fillRect(
+                        ~x=pen.x,
+                        ~y=pen.y -. 0.85 *. 60.,
+                        ~w=2.,
+                        ~h=60.,
+                      );
+                 };
+                 switch (child) {
+                 | Glyph(_, c) =>
+                   ctx
+                   |> Canvas2d.fillText(
+                        String.make(1, c),
+                        ~x=pen.x,
+                        ~y=pen.y,
+                      );
+                   pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+                 | Sup(_, _) =>
+                   pen.y = pen.y -. 30.;
+                   render(child);
+                   pen.y = pen.y +. 30.;
+                 | _ => ignore()
+                 };
+               },
+               children,
+             );
+             if (cursor^ == List.length(children)) {
                ctx
-               |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
-               pen.x = pen.x +. metrics.getCharWidth(c, 60.);
-             | _ => ignore()
+               |> Canvas2d.fillRect(
+                    ~x=pen.x,
+                    ~y=pen.y -. 0.85 *. 60.,
+                    ~w=2.,
+                    ~h=60.,
+                  );
              };
-           },
-           ast^,
-         );
+           | _ => ignore()
+           };
 
-         if (cursor^ == List.length(ast^)) {
-           ctx
-           |> Canvas2d.fillRect(
-                ~x=pen.x,
-                ~y=pen.y -. 0.85 *. 60.,
-                ~w=2.,
-                ~h=60.,
-              );
-         };
+         render(ast^);
        };
 
        update();
@@ -108,14 +209,51 @@ Js.Promise.(
            | "Control" => ignore()
            | "Backspace" =>
              if (cursor^ > 0) {
-               ast := remove_at(cursor^ - 1, ast^)
+               ast :=
+                 (
+                   switch (ast^) {
+                   | Row(id, children) =>
+                     Row(id, remove_at(cursor^ - 1, children))
+                   | _ => raise(Unhandled)
+                   }
+                 );
                cursor := cursor^ - 1;
              }
            | "ArrowLeft" => cursor := Js_math.max_int(0, cursor^ - 1)
            | "ArrowRight" =>
-             cursor := Js_math.min_int(List.length(ast^), cursor^ + 1)
+             ();
+             switch (ast^) {
+             | Row(_, children) =>
+               cursor := Js_math.min_int(List.length(children), cursor^ + 1)
+             | _ => raise(Unhandled)
+             };
+           | "^" =>
+             let power = Sup(genId(), [Glyph(genId(), '2')]);
+             ast :=
+               (
+                 switch (ast^) {
+                 | Row(id, children) =>
+                   Row(id, insert_at(cursor^ - 1, power, children))
+                 | _ => raise(Unhandled)
+                 }
+               );
+             cursor := cursor^ + 1;
            | _ =>
-             ast := insert_at(cursor^ - 1, Glyph(String.get(key, 0)), ast^);
+             ast :=
+               (
+                 switch (ast^) {
+                 | Row(id, children) =>
+                   Row(
+                     id,
+                     insert_at(
+                       cursor^ - 1,
+                       Glyph(genId(), key.[0]),
+                       children,
+                     ),
+                   )
+                 | _ => raise(Unhandled)
+                 }
+               );
              cursor := cursor^ + 1;
            };
 
