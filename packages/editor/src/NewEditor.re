@@ -1,3 +1,4 @@
+[%%debugger.chrome];
 Js.log("NewEditor");
 
 open Webapi.Canvas;
@@ -17,6 +18,29 @@ and kind =
   | Sup
   | Sub
   | Frac;
+
+let rec toJson = node => {
+  Json.Encode.(
+    switch (node) {
+    | Box(id, kind, children) =>
+      object_([
+        ("id", int(id)),
+        ("kind", switch(kind) {
+        | Row => string("row")
+        | Sup => string("sup")
+        | Sub => string("sub")
+        | Frac => string("frac")
+        }),
+        ("childern", jsonArray(Array.map(toJson, Array.of_list(children)))),
+      ])
+    | Glyph(id, char) => 
+      object_([
+        ("id", int(id)),
+        ("char", string(String.make(1, char))),
+      ])
+    }
+  )
+}
 
 let ctx = CanvasRenderer.makeContext(1000, 600);
 
@@ -134,6 +158,7 @@ Js.Promise.(
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
          Js.log({j|cursor = $cursor|j});
+         Js.log({j|cursorId = $cursorId|j});
 
          /* typeset stuff */
          let pen = {x: 0., y: 300.};
@@ -169,6 +194,8 @@ Js.Promise.(
            };
 
          render(ast^);
+         Js.log(ast^);
+         Js.log(toJson(ast^));
        };
 
        update();
@@ -191,7 +218,8 @@ Js.Promise.(
                    node =>
                      switch (node) {
                      | Box(id, kind, children) =>
-                       if (id == cursorId^) {
+                       if (id == cursorId^ && !processed^) {
+                         processed := true;
                          Some(
                            Box(id, kind, remove_at(cursor^ - 1, children)),
                          );
@@ -209,7 +237,9 @@ Js.Promise.(
                    | _ => raise(Unhandled)
                    }
                  );
-               cursor := cursor^ - 1;
+               if (processed^) {
+                cursor := cursor^ - 1;
+               }
              }
            | "ArrowLeft" =>
              traverse(
@@ -285,9 +315,10 @@ Js.Promise.(
                ast^,
              )
            | "^" =>
+             let powerId = genId();
              let power =
                Box(
-                 genId(),
+                 powerId,
                  Sup,
                  [Glyph(genId(), '2'), Glyph(genId(), '4')],
                );
@@ -314,7 +345,8 @@ Js.Promise.(
                  | _ => raise(Unhandled)
                  }
                );
-             cursor := cursor^ + 1;
+             cursorId := powerId;
+             cursor := 2;
            | _ =>
              let newAst =
                transform(

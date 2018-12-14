@@ -34,6 +34,7 @@
     "bs-fetch"
   ],
   "bs-dev-dependencies": ["@glennsl/bs-jest"],
+  "bsc-flags": ["-bs-g"],
   "warnings": {
     "error": "+101"
   },
