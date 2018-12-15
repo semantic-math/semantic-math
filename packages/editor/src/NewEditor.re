@@ -145,6 +145,25 @@ let rec indexOf = (x, lst, c) =>
   | [hd, ...tl] => hd == x ? c : indexOf(x, tl, c + 1)
   };
 
+let insertIntoTree = (ast, parentNode, index, newNode) => {
+  let newAst =
+    transform(
+      node =>
+        node == parentNode ?
+          switch (parentNode) {
+          | Box(id, kind, children) =>
+            Some(Box(id, kind, insert_at(index, newNode, children)))
+          | Glyph(_, _) => raise(Unhandled)
+          } :
+          Some(node),
+      ast,
+    );
+  switch (newAst) {
+  | Some(node) => node
+  | _ => raise(Unhandled)
+  };
+};
+
 Js.Promise.(
   Fetch.fetch("/packages/typesetter/metrics/comic-sans.json")
   |> then_(Fetch.Response.json)
@@ -193,8 +212,22 @@ Js.Promise.(
              | _ => ()
              };
            | Glyph(_, c) =>
+             /* TODO: check the previous sibling node, if it's punctuation
+                then we can't drop the padding */
+             switch (c) {
+             | '='
+             | '+'
+             | '-' => pen.x = pen.x +. 15.
+             | _ => ()
+             };
              drawChar(ctx, pen, c);
              pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+             switch (c) {
+             | '='
+             | '+'
+             | '-' => pen.x = pen.x +. 15.
+             | _ => ()
+             };
            };
 
          render(ast^, []);
@@ -221,6 +254,9 @@ Js.Promise.(
                  switch (List.rev(cursorPath^)) {
                  | [] => []
                  | [last, ...revParentPath] =>
+                   /* TODO: insert all nodes from the current box in the parent
+                      at the location of the current box within the parent's children
+                      list */
                    if (last == 0) {
                      cursorPath^;
                    } else {
@@ -309,13 +345,7 @@ Js.Promise.(
                  }
                )
            | "^" =>
-             let powerId = genId();
-             let power =
-               Box(
-                 powerId,
-                 Sup,
-                 [Glyph(genId(), '2')] /* , Glyph(genId(), '4')], */
-               );
+             let power = Box(genId(), Sup, [Glyph(genId(), '2')]);
 
              cursorPath :=
                (
@@ -324,32 +354,8 @@ Js.Promise.(
                  | [last, ...revParentPath] =>
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
-                   switch (parentNode) {
-                   | Box(id, kind, children) =>
-                     let newAst =
-                       transform(
-                         node =>
-                           node == parentNode ?
-                             Some(
-                               Box(
-                                 id,
-                                 kind,
-                                 insert_at(last, power, children),
-                               ),
-                             ) :
-                             Some(node),
-                         ast^,
-                       );
-                     ast :=
-                       (
-                         switch (newAst) {
-                         | Some(node) => node
-                         | _ => raise(Unhandled)
-                         }
-                       );
-                     List.rev_append(revParentPath, [last + 1]);
-                   | _ => raise(Unhandled)
-                   };
+                   ast := insertIntoTree(ast^, parentNode, last, power);
+                   List.rev_append(revParentPath, [last + 1]);
                  }
                );
            | _ =>
@@ -360,36 +366,14 @@ Js.Promise.(
                  | [last, ...revParentPath] =>
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
-                   switch (parentNode) {
-                   | Box(id, kind, children) =>
-                     let newAst =
-                       transform(
-                         node =>
-                           node == parentNode ?
-                             Some(
-                               Box(
-                                 id,
-                                 kind,
-                                 insert_at(
-                                   last,
-                                   Glyph(genId(), key.[0]),
-                                   children,
-                                 ),
-                               ),
-                             ) :
-                             Some(node),
-                         ast^,
-                       );
-                     ast :=
-                       (
-                         switch (newAst) {
-                         | Some(node) => node
-                         | _ => raise(Unhandled)
-                         }
-                       );
-                     List.rev_append(revParentPath, [last + 1]);
-                   | _ => raise(Unhandled)
-                   };
+                   ast :=
+                     insertIntoTree(
+                       ast^,
+                       parentNode,
+                       last,
+                       Glyph(genId(), key.[0]),
+                     );
+                   List.rev_append(revParentPath, [last + 1]);
                  }
                )
            };
