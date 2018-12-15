@@ -19,38 +19,49 @@ and kind =
   | Sub
   | Frac;
 
-let rec toJson = node => {
+let rec toJson = node =>
   Json.Encode.(
     switch (node) {
     | Box(id, kind, children) =>
       object_([
         ("id", int(id)),
-        ("kind", switch(kind) {
-        | Row => string("row")
-        | Sup => string("sup")
-        | Sub => string("sub")
-        | Frac => string("frac")
-        }),
-        ("childern", jsonArray(Array.map(toJson, Array.of_list(children)))),
+        (
+          "kind",
+          switch (kind) {
+          | Row => string("row")
+          | Sup => string("sup")
+          | Sub => string("sub")
+          | Frac => string("frac")
+          },
+        ),
+        (
+          "childern",
+          jsonArray(Array.map(toJson, Array.of_list(children))),
+        ),
       ])
-    | Glyph(id, char) => 
-      object_([
-        ("id", int(id)),
-        ("char", string(String.make(1, char))),
-      ])
+    | Glyph(id, char) =>
+      object_([("id", int(id)), ("char", string(String.make(1, char)))])
     }
-  )
-}
+  );
 
 let ctx = CanvasRenderer.makeContext(1000, 600);
 
-let cursorId = ref(genId());
-let cursor = ref(7);
+let cursorPath = ref([0]);
+
+let rec nodeForPath = (path: list(int), node) =>
+  switch (path) {
+  | [] => node
+  | [hd, ...tl] =>
+    switch (node) {
+    | Box(_, _, children) => nodeForPath(tl, List.nth(children, hd))
+    | Glyph(_, _) => raise(Unhandled)
+    }
+  };
 
 let ast =
   ref(
     Box(
-      cursorId^,
+      genId(),
       Row,
       [
         Glyph(genId(), '2'),
@@ -89,14 +100,8 @@ let rec transform = (visitor: visitor, node): option(node) =>
         [],
         children,
       );
-    if (List.length(newChildren) > 1) {
-      let row = Box(id, kind, newChildren);
-      visitor(row);
-    } else if (List.length(newChildren) == 1) {
-      Some(List.hd(newChildren));
-    } else {
-      None;
-    };
+    let row = Box(id, kind, newChildren);
+    visitor(row);
   | _ => visitor(node)
   };
 
@@ -157,15 +162,14 @@ Js.Promise.(
          ctx->(Canvas2d.font("60px comic sans ms"));
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
-         Js.log({j|cursor = $cursor|j});
-         Js.log({j|cursorId = $cursorId|j});
+         Js.log(cursorPath);
 
          /* typeset stuff */
          let pen = {x: 0., y: 300.};
 
-         let rec render = node =>
+         let rec render = (node, path) =>
            switch (node) {
-           | Box(id, kind, children) =>
+           | Box(_, kind, children) =>
              switch (kind) {
              | Sup => pen.y = pen.y -. 30.
              | Sub => pen.y = pen.y +. 30.
@@ -173,14 +177,14 @@ Js.Promise.(
              };
              List.iteri(
                (i, child) => {
-                 if (cursor^ == i && cursorId^ == id) {
+                 if (cursorPath^ == path @ [i]) {
                    drawCursor(ctx, pen);
                  };
-                 render(child);
+                 render(child, path @ [i]);
                },
                children,
              );
-             if (cursor^ == List.length(children) && cursorId^ == id) {
+             if (cursorPath^ == path @ [List.length(children)]) {
                drawCursor(ctx, pen);
              };
              switch (kind) {
@@ -193,7 +197,7 @@ Js.Promise.(
              pen.x = pen.x +. metrics.getCharWidth(c, 60.);
            };
 
-         render(ast^);
+         render(ast^, []);
          Js.log(ast^);
          Js.log(toJson(ast^));
        };
@@ -204,7 +208,7 @@ Js.Promise.(
        Document.addKeyDownEventListener(
          event => {
            let key = KeyboardEvent.key(event);
-           let processed = ref(false);
+           /* let processed = ref(false); */
            Js.log(key);
            switch (key) {
            | "Meta"
@@ -212,173 +216,183 @@ Js.Promise.(
            | "Alt"
            | "Control" => ignore()
            | "Backspace" =>
-             if (cursor^ > 0) {
-               let newAst =
-                 transform(
-                   node =>
-                     switch (node) {
-                     | Box(id, kind, children) =>
-                       if (id == cursorId^ && !processed^) {
-                         processed := true;
-                         Some(
-                           Box(id, kind, remove_at(cursor^ - 1, children)),
-                         );
-                       } else {
-                         Some(node);
-                       }
-                     | _ => Some(node)
-                     },
-                   ast^,
-                 );
-               ast :=
-                 (
-                   switch (newAst) {
-                   | Some(node) => node
-                   | _ => raise(Unhandled)
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   if (last == 0) {
+                     cursorPath^;
+                   } else {
+                     let newCursorPath =
+                       List.rev_append(revParentPath, [last - 1]);
+                     let cursorNode = nodeForPath(newCursorPath, ast^);
+                     let newAst =
+                       transform(
+                         node => node == cursorNode ? None : Some(node),
+                         ast^,
+                       );
+                     ast :=
+                       (
+                         switch (newAst) {
+                         | Some(node) => node
+                         | _ => raise(Unhandled)
+                         }
+                       );
+                     newCursorPath;
                    }
-                 );
-               if (processed^) {
-                cursor := cursor^ - 1;
-               }
-             }
+                 }
+               )
            | "ArrowLeft" =>
-             traverse(
-               (node, parent) =>
-                 switch (node) {
-                 | Box(id, _, children) =>
-                   /* we used processed to prevent processing the same event twice */
-                   if (id == cursorId^ && ! processed^) {
-                     processed := true;
-                     if (cursor^ == 0) {
-                       switch (parent) {
-                       | Some(Box(id, _, children)) =>
-                         cursorId := id;
-                         cursor := indexOf(node, children, 0);
-                         Js.log({j|cursor = $cursor|j});
-                       | _ => ()
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentPath = List.rev(revParentPath);
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   switch (parentNode) {
+                   | Box(_, _, _) =>
+                     if (last == 0) {
+                       /* Handle leaving a Box */
+                       switch (List.rev(parentPath)) {
+                       | [] => cursorPath^
+                       | _ =>
+                         /* List.rev_append(revGrandparentPath, [last - 1]) */
+                         parentPath
                        };
                      } else {
-                       let child = List.nth(children, cursor^ - 1);
-                       switch (child) {
+                       let prevNode =
+                         nodeForPath(
+                           List.rev_append(revParentPath, [last - 1]),
+                           ast^,
+                         );
+                       switch (prevNode) {
+                       | Box(_, _, children) =>
+                         /* Handle entering a Box */
+                         List.rev_append(revParentPath, [last - 1])
+                         @ [List.length(children)]
                        | Glyph(_, _) =>
-                         cursor := Js_math.max_int(0, cursor^ - 1)
-                       | Box(id, _, children) =>
-                         cursor := List.length(children);
-                         cursorId := id;
+                         List.rev_append(revParentPath, [last - 1])
                        };
-                     };
-                   }
-                 | Glyph(_, _) => ()
-                 },
-               ast^,
-             )
-           /* switch (ast^) {
-              | Row(id, _) =>
-                if (id == cursorId^) {
-                  cursor := Js_math.max_int(0, cursor^ - 1);
-                }
-              | _ => raise(Unhandled)
-              } */
+                     }
+                   | Glyph(_, _) => raise(Unhandled) /* Glyphs don't have children */
+                   };
+                 }
+               )
            | "ArrowRight" =>
-             traverse(
-               (node, parent) =>
-                 switch (node) {
-                 | Box(id, _, children) =>
-                   /* we used processed to prevent processing the same event twice */
-                   if (id == cursorId^ && ! processed^) {
-                     processed := true;
-                     if (cursor^ == List.length(children)) {
-                       switch (parent) {
-                       | Some(Box(id, _, children)) =>
-                         cursorId := id;
-                         cursor := indexOf(node, children, 0) + 1;
-                         Js.log({j|cursor = $cursor|j});
-                       | _ => ()
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentPath = List.rev(revParentPath);
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   switch (parentNode) {
+                   | Box(_, _, children) =>
+                     if (last == List.length(children)) {
+                       switch (List.rev(parentPath)) {
+                       | [] => cursorPath^
+                       | [last, ...revGrandparentPath] =>
+                         List.rev_append(revGrandparentPath, [last + 1])
                        };
                      } else {
-                       let child = List.nth(children, cursor^);
-                       switch (child) {
+                       let nextNode = nodeForPath(cursorPath^, ast^);
+                       switch (nextNode) {
+                       | Box(_, _, _) => cursorPath^ @ [0]
                        | Glyph(_, _) =>
-                         cursor :=
-                           Js_math.min_int(
-                             List.length(children),
-                             cursor^ + 1,
-                           )
-                       | Box(id, _, _) =>
-                         cursor := 0;
-                         cursorId := id;
+                         List.rev_append(revParentPath, [last + 1])
                        };
-                     };
-                   }
-                 | Glyph(_, _) => ()
-                 },
-               ast^,
-             )
+                     }
+                   | Glyph(_, _) => raise(Unhandled) /* Glyphs don't have children */
+                   };
+                 }
+               )
            | "^" =>
              let powerId = genId();
              let power =
                Box(
                  powerId,
                  Sup,
-                 [Glyph(genId(), '2'), Glyph(genId(), '4')],
+                 [Glyph(genId(), '2')] /* , Glyph(genId(), '4')], */
                );
-             let newAst =
-               transform(
-                 node =>
-                   switch (node) {
-                   | Box(id, kind, children) =>
-                     if (id == cursorId^) {
-                       let newChildren =
-                         insert_at(cursor^, power, children);
-                       Some(Box(id, kind, newChildren));
-                     } else {
-                       Some(node);
-                     }
-                   | _ => Some(node)
-                   },
-                 ast^,
-               );
-             ast :=
-               (
-                 switch (newAst) {
-                 | Some(node) => node
-                 | _ => raise(Unhandled)
-                 }
-               );
-             cursorId := powerId;
-             cursor := 2;
-           | _ =>
-             let newAst =
-               transform(
-                 node =>
-                   switch (node) {
-                   | Box(id, kind, children) =>
-                     if (id == cursorId^ && !processed^) {
-                       processed := true;
-                       let newChildren =
-                         insert_at(
-                           cursor^,
-                           Glyph(genId(), key.[0]),
-                           children,
-                         );
-                       cursor := cursor^ + 1;
-                       Some(Box(id, kind, newChildren));
-                     } else {
-                       Some(node);
-                     }
-                   | _ => Some(node)
-                   },
-                 ast^,
-               );
-             ast :=
-               (
-                 switch (newAst) {
-                 | Some(node) => node
-                 | _ => raise(Unhandled)
-                 }
-               );
-           };
 
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentNode =
+                     nodeForPath(List.rev(revParentPath), ast^);
+                   switch (parentNode) {
+                   | Box(id, kind, children) =>
+                     let newAst =
+                       transform(
+                         node =>
+                           node == parentNode ?
+                             Some(
+                               Box(
+                                 id,
+                                 kind,
+                                 insert_at(last, power, children),
+                               ),
+                             ) :
+                             Some(node),
+                         ast^,
+                       );
+                     ast :=
+                       (
+                         switch (newAst) {
+                         | Some(node) => node
+                         | _ => raise(Unhandled)
+                         }
+                       );
+                     List.rev_append(revParentPath, [last + 1]);
+                   | _ => raise(Unhandled)
+                   };
+                 }
+               );
+           | _ =>
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentNode =
+                     nodeForPath(List.rev(revParentPath), ast^);
+                   switch (parentNode) {
+                   | Box(id, kind, children) =>
+                     let newAst =
+                       transform(
+                         node =>
+                           node == parentNode ?
+                             Some(
+                               Box(
+                                 id,
+                                 kind,
+                                 insert_at(
+                                   last,
+                                   Glyph(genId(), key.[0]),
+                                   children,
+                                 ),
+                               ),
+                             ) :
+                             Some(node),
+                         ast^,
+                       );
+                     ast :=
+                       (
+                         switch (newAst) {
+                         | Some(node) => node
+                         | _ => raise(Unhandled)
+                         }
+                       );
+                     List.rev_append(revParentPath, [last + 1]);
+                   | _ => raise(Unhandled)
+                   };
+                 }
+               )
+           };
            update();
          },
          document,
