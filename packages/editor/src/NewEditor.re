@@ -17,7 +17,8 @@ and kind =
   | Row
   | Sup
   | Sub
-  | Frac;
+  | Frac
+  | Parens;
 
 let rec toJson = node =>
   Json.Encode.(
@@ -32,6 +33,7 @@ let rec toJson = node =>
           | Sup => string("sup")
           | Sub => string("sub")
           | Frac => string("frac")
+          | Parens => string("parens")
           },
         ),
         (
@@ -194,6 +196,10 @@ Js.Promise.(
              | Sub => pen.y = pen.y +. 30.
              | _ => ()
              };
+             if (kind == Parens) {
+               drawChar(ctx, pen, '(');
+               pen.x = pen.x +. metrics.getCharWidth('(', 60.);
+             };
              List.iteri(
                (i, child) => {
                  if (cursorPath^ == path @ [i]) {
@@ -205,6 +211,10 @@ Js.Promise.(
              );
              if (cursorPath^ == path @ [List.length(children)]) {
                drawCursor(ctx, pen);
+             };
+             if (kind == Parens) {
+               drawChar(ctx, pen, ')');
+               pen.x = pen.x +. metrics.getCharWidth(')', 60.);
              };
              switch (kind) {
              | Sup => pen.y = pen.y +. 30.
@@ -346,7 +356,6 @@ Js.Promise.(
                )
            | "^" =>
              let power = Box(genId(), Sup, [Glyph(genId(), '2')]);
-
              cursorPath :=
                (
                  switch (List.rev(cursorPath^)) {
@@ -355,6 +364,19 @@ Js.Promise.(
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
                    ast := insertIntoTree(ast^, parentNode, last, power);
+                   List.rev_append(revParentPath, [last + 1]);
+                 }
+               );
+           | "(" =>
+             let parens = Box(genId(), Parens, []);
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentNode =
+                     nodeForPath(List.rev(revParentPath), ast^);
+                   ast := insertIntoTree(ast^, parentNode, last, parens);
                    List.rev_append(revParentPath, [last + 1]);
                  }
                );
