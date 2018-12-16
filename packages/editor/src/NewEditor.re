@@ -376,7 +376,7 @@ Js.Promise.(
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
                    ast := insertIntoTree(ast^, parentNode, last, sup);
-                   List.rev_append(revParentPath, [last + 1]);
+                   List.rev_append(revParentPath, [last, 1]);
                  }
                );
            | "_" =>
@@ -389,7 +389,7 @@ Js.Promise.(
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
                    ast := insertIntoTree(ast^, parentNode, last, sub);
-                   List.rev_append(revParentPath, [last + 1]);
+                   List.rev_append(revParentPath, [last, 1]);
                  }
                );
            | "(" =>
@@ -402,7 +402,7 @@ Js.Promise.(
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
                    ast := insertIntoTree(ast^, parentNode, last, parens);
-                   List.rev_append(revParentPath, [last + 1]);
+                   List.rev_append(revParentPath, [last, 0]);
                  }
                );
            | _ =>
