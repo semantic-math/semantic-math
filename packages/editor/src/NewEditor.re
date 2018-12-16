@@ -135,11 +135,13 @@ let rec insert_at = (n: int, x: 'a, l: list('a)) =>
   | [h, ...t] => n == 0 ? [x, h, ...t] : [h, ...insert_at(n - 1, x, t)]
   };
 
-let drawCursor = (ctx, pen) =>
-  ctx |> Canvas2d.fillRect(~x=pen.x, ~y=pen.y -. 0.85 *. 60., ~w=2., ~h=60.);
+let drawCursor = (ctx, pen, fontSize) =>
+  ctx |> Canvas2d.fillRect(~x=pen.x, ~y=pen.y -. 0.85 *. fontSize, ~w=2., ~h=fontSize);
 
-let drawChar = (ctx, pen, c) =>
+let drawChar = (ctx, pen, c, fontSize) => {
+  ctx->(Canvas2d.font(string_of_float(fontSize) ++ "0px comic sans ms"));
   ctx |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
+};
 
 let rec indexOf = (x, lst, c) =>
   switch (lst) {
@@ -180,7 +182,6 @@ Js.Promise.(
          ctx |> Canvas2d.fillRect(~x=0., ~y=0., ~w=1000., ~h=600.);
 
          /* set styles */
-         ctx->(Canvas2d.font("60px comic sans ms"));
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
          Js.log(cursorPath);
@@ -188,33 +189,42 @@ Js.Promise.(
          /* typeset stuff */
          let pen = {x: 0., y: 300.};
 
-         let rec render = (node, path) =>
+         let rec render = (~fontScale=1., node, path) => {
            switch (node) {
            | Box(_, kind, children) =>
+             let newFontScale = switch(kind) {
+             | Sup | Sub => fontScale == 1.0 ? 0.8 : 0.65
+             | _ => fontScale
+             };
+             /* We render the cursor for the child nodes in the parent b/c
+                we don't know the index, if we could pass the index to the
+                render function then we could render the cursor at the same
+                time we render the glyh */
+             let fontSize = newFontScale *. 60.;
              switch (kind) {
              | Sup => pen.y = pen.y -. 30.
              | Sub => pen.y = pen.y +. 30.
              | _ => ()
              };
              if (kind == Parens) {
-               drawChar(ctx, pen, '(');
-               pen.x = pen.x +. metrics.getCharWidth('(', 60.);
+               drawChar(ctx, pen, '(', fontSize);
+               pen.x = pen.x +. metrics.getCharWidth('(', fontSize);
              };
              List.iteri(
                (i, child) => {
                  if (cursorPath^ == path @ [i]) {
-                   drawCursor(ctx, pen);
+                   drawCursor(ctx, pen, fontSize);
                  };
-                 render(child, path @ [i]);
+                 render(~fontScale=newFontScale, child, path @ [i]);
                },
                children,
              );
              if (cursorPath^ == path @ [List.length(children)]) {
-               drawCursor(ctx, pen);
+               drawCursor(ctx, pen, fontSize);
              };
              if (kind == Parens) {
-               drawChar(ctx, pen, ')');
-               pen.x = pen.x +. metrics.getCharWidth(')', 60.);
+               drawChar(ctx, pen, ')', fontSize);
+               pen.x = pen.x +. metrics.getCharWidth(')', fontSize);
              };
              switch (kind) {
              | Sup => pen.y = pen.y +. 30.
@@ -222,6 +232,7 @@ Js.Promise.(
              | _ => ()
              };
            | Glyph(_, c) =>
+             let fontSize = fontScale *. 60.;
              /* TODO: check the previous sibling node, if it's punctuation
                 then we can't drop the padding */
              switch (c) {
@@ -230,8 +241,8 @@ Js.Promise.(
              | '-' => pen.x = pen.x +. 15.
              | _ => ()
              };
-             drawChar(ctx, pen, c);
-             pen.x = pen.x +. metrics.getCharWidth(c, 60.);
+             drawChar(ctx, pen, c, fontSize);
+             pen.x = pen.x +. metrics.getCharWidth(c, fontSize);
              switch (c) {
              | '='
              | '+'
@@ -239,6 +250,7 @@ Js.Promise.(
              | _ => ()
              };
            };
+         };
 
          render(ast^, []);
          Js.log(ast^);
@@ -355,7 +367,7 @@ Js.Promise.(
                  }
                )
            | "^" =>
-             let power = Box(genId(), Sup, [Glyph(genId(), '2')]);
+             let sup = Box(genId(), Sup, [Glyph(genId(), '2')]);
              cursorPath :=
                (
                  switch (List.rev(cursorPath^)) {
@@ -363,7 +375,20 @@ Js.Promise.(
                  | [last, ...revParentPath] =>
                    let parentNode =
                      nodeForPath(List.rev(revParentPath), ast^);
-                   ast := insertIntoTree(ast^, parentNode, last, power);
+                   ast := insertIntoTree(ast^, parentNode, last, sup);
+                   List.rev_append(revParentPath, [last + 1]);
+                 }
+               );
+           | "_" =>
+             let sub = Box(genId(), Sub, [Glyph(genId(), '2')]);
+             cursorPath :=
+               (
+                 switch (List.rev(cursorPath^)) {
+                 | [] => []
+                 | [last, ...revParentPath] =>
+                   let parentNode =
+                     nodeForPath(List.rev(revParentPath), ast^);
+                   ast := insertIntoTree(ast^, parentNode, last, sub);
                    List.rev_append(revParentPath, [last + 1]);
                  }
                );
