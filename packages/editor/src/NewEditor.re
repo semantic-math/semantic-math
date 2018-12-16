@@ -50,15 +50,21 @@ let ctx = CanvasRenderer.makeContext(1000, 600);
 
 let cursorPath = ref([0]);
 
-let rec nodeForPath = (path: list(int), node) =>
+let rec _nodeForPath = (path: list(int), node) =>
   switch (path) {
   | [] => node
   | [hd, ...tl] =>
     switch (node) {
-    | Box(_, _, children) => nodeForPath(tl, List.nth(children, hd))
+    | Box(_, _, children) => _nodeForPath(tl, List.nth(children, hd))
     | Glyph(_, _) => raise(Unhandled)
     }
   };
+
+let nodeForPath = (path: list(int), node) =>
+  /* Note: the iteration order is opposite of the normal use of the paths which usually
+     has the top of the stack first.  Here we need the bottom of the stack first b/c we're
+     traversing a tree. */
+  _nodeForPath(List.rev(path), node);
 
 let ast =
   ref(
@@ -136,7 +142,13 @@ let rec insert_at = (n: int, x: 'a, l: list('a)) =>
   };
 
 let drawCursor = (ctx, pen, fontSize) =>
-  ctx |> Canvas2d.fillRect(~x=pen.x, ~y=pen.y -. 0.85 *. fontSize, ~w=2., ~h=fontSize);
+  ctx
+  |> Canvas2d.fillRect(
+       ~x=pen.x,
+       ~y=pen.y -. 0.85 *. fontSize,
+       ~w=2.,
+       ~h=fontSize,
+     );
 
 let drawChar = (ctx, pen, c, fontSize) => {
   ctx->(Canvas2d.font(string_of_float(fontSize) ++ "0px comic sans ms"));
@@ -184,18 +196,18 @@ Js.Promise.(
          /* set styles */
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
-         Js.log(cursorPath);
-
          /* typeset stuff */
          let pen = {x: 0., y: 300.};
 
-         let rec render = (~fontScale=1., node, path) => {
+         let rec render = (~fontScale=1., node, path) =>
            switch (node) {
            | Box(_, kind, children) =>
-             let newFontScale = switch(kind) {
-             | Sup | Sub => fontScale == 1.0 ? 0.8 : 0.65
-             | _ => fontScale
-             };
+             let newFontScale =
+               switch (kind) {
+               | Sup
+               | Sub => fontScale == 1.0 ? 0.8 : 0.65
+               | _ => fontScale
+               };
              /* We render the cursor for the child nodes in the parent b/c
                 we don't know the index, if we could pass the index to the
                 render function then we could render the cursor at the same
@@ -212,14 +224,14 @@ Js.Promise.(
              };
              List.iteri(
                (i, child) => {
-                 if (cursorPath^ == path @ [i]) {
+                 if (cursorPath^ == [i] @ path) {
                    drawCursor(ctx, pen, fontSize);
                  };
-                 render(~fontScale=newFontScale, child, path @ [i]);
+                 render(~fontScale=newFontScale, child, [i] @ path);
                },
                children,
              );
-             if (cursorPath^ == path @ [List.length(children)]) {
+             if (cursorPath^ == [List.length(children)] @ path) {
                drawCursor(ctx, pen, fontSize);
              };
              if (kind == Parens) {
@@ -250,7 +262,6 @@ Js.Promise.(
              | _ => ()
              };
            };
-         };
 
          render(ast^, []);
          Js.log(ast^);
@@ -273,17 +284,16 @@ Js.Promise.(
            | "Backspace" =>
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
+                 | [top, ...parentPath] =>
                    /* TODO: insert all nodes from the current box in the parent
                       at the location of the current box within the parent's children
                       list */
-                   if (last == 0) {
+                   if (top == 0) {
                      cursorPath^;
                    } else {
-                     let newCursorPath =
-                       List.rev_append(revParentPath, [last - 1]);
+                     let newCursorPath = [top - 1] @ parentPath;
                      let cursorNode = nodeForPath(newCursorPath, ast^);
                      let newAst =
                        transform(
@@ -304,34 +314,28 @@ Js.Promise.(
            | "ArrowLeft" =>
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentPath = List.rev(revParentPath);
+                 | [top, ...parentPath] =>
                    let parentNode = nodeForPath(parentPath, ast^);
                    switch (parentNode) {
                    | Box(_, _, _) =>
-                     if (last == 0) {
+                     if (top == 0) {
                        /* Handle leaving a Box */
-                       switch (List.rev(parentPath)) {
+                       switch (parentPath) {
                        | [] => cursorPath^
                        | _ =>
-                         /* List.rev_append(revGrandparentPath, [last - 1]) */
+                         /* [top - 1] @ grandparentPath */
                          parentPath
                        };
                      } else {
                        let prevNode =
-                         nodeForPath(
-                           List.rev_append(revParentPath, [last - 1]),
-                           ast^,
-                         );
+                         nodeForPath([top - 1] @ parentPath, ast^);
                        switch (prevNode) {
                        | Box(_, _, children) =>
                          /* Handle entering a Box */
-                         List.rev_append(revParentPath, [last - 1])
-                         @ [List.length(children)]
-                       | Glyph(_, _) =>
-                         List.rev_append(revParentPath, [last - 1])
+                         [List.length(children), top - 1] @ parentPath
+                       | Glyph(_, _) => [top - 1] @ parentPath
                        };
                      }
                    | Glyph(_, _) => raise(Unhandled) /* Glyphs don't have children */
@@ -341,25 +345,23 @@ Js.Promise.(
            | "ArrowRight" =>
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentPath = List.rev(revParentPath);
+                 | [top, ...parentPath] =>
                    let parentNode = nodeForPath(parentPath, ast^);
                    switch (parentNode) {
                    | Box(_, _, children) =>
-                     if (last == List.length(children)) {
-                       switch (List.rev(parentPath)) {
+                     if (top == List.length(children)) {
+                       switch (parentPath) {
                        | [] => cursorPath^
-                       | [last, ...revGrandparentPath] =>
-                         List.rev_append(revGrandparentPath, [last + 1])
+                       | [parent, ...grandparentPath] =>
+                         [parent + 1] @ grandparentPath
                        };
                      } else {
                        let nextNode = nodeForPath(cursorPath^, ast^);
                        switch (nextNode) {
-                       | Box(_, _, _) => cursorPath^ @ [0]
-                       | Glyph(_, _) =>
-                         List.rev_append(revParentPath, [last + 1])
+                       | Box(_, _, _) => [0] @ cursorPath^
+                       | Glyph(_, _) => [top + 1] @ parentPath
                        };
                      }
                    | Glyph(_, _) => raise(Unhandled) /* Glyphs don't have children */
@@ -370,57 +372,53 @@ Js.Promise.(
              let sup = Box(genId(), Sup, [Glyph(genId(), '2')]);
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentNode =
-                     nodeForPath(List.rev(revParentPath), ast^);
-                   ast := insertIntoTree(ast^, parentNode, last, sup);
-                   List.rev_append(revParentPath, [last, 1]);
+                 | [top, ...parentPath] =>
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   ast := insertIntoTree(ast^, parentNode, top, sup);
+                   [1, top] @ parentPath;
                  }
                );
            | "_" =>
              let sub = Box(genId(), Sub, [Glyph(genId(), '2')]);
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentNode =
-                     nodeForPath(List.rev(revParentPath), ast^);
-                   ast := insertIntoTree(ast^, parentNode, last, sub);
-                   List.rev_append(revParentPath, [last, 1]);
+                 | [top, ...parentPath] =>
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   ast := insertIntoTree(ast^, parentNode, top, sub);
+                   [1, top] @ parentPath;
                  }
                );
            | "(" =>
              let parens = Box(genId(), Parens, []);
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentNode =
-                     nodeForPath(List.rev(revParentPath), ast^);
-                   ast := insertIntoTree(ast^, parentNode, last, parens);
-                   List.rev_append(revParentPath, [last, 0]);
+                 | [top, ...parentPath] =>
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   ast := insertIntoTree(ast^, parentNode, top, parens);
+                   [0, top] @ parentPath;
                  }
                );
            | _ =>
              cursorPath :=
                (
-                 switch (List.rev(cursorPath^)) {
+                 switch (cursorPath^) {
                  | [] => []
-                 | [last, ...revParentPath] =>
-                   let parentNode =
-                     nodeForPath(List.rev(revParentPath), ast^);
+                 | [top, ...parentPath] =>
+                   let parentNode = nodeForPath(parentPath, ast^);
                    ast :=
                      insertIntoTree(
                        ast^,
                        parentNode,
-                       last,
+                       top,
                        Glyph(genId(), key.[0]),
                      );
-                   List.rev_append(revParentPath, [last + 1]);
+                   [top + 1] @ parentPath;
                  }
                )
            };
