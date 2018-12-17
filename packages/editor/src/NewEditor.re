@@ -222,15 +222,28 @@ Js.Promise.(
                drawChar(ctx, pen, '(', fontSize);
                pen.x = pen.x +. metrics.getCharWidth('(', fontSize);
              };
-             List.iteri(
-               (i, child) => {
-                 if (cursorPath^ == [i] @ path) {
-                   drawCursor(ctx, pen, fontSize);
-                 };
-                 render(~fontScale=newFontScale, child, [i] @ path);
-               },
-               children,
-             );
+             switch (kind) {
+             | Frac =>
+               let [num, den] = children;
+               let {x, y} = pen;
+               pen.y = pen.y -. 30.;
+               render(~fontScale=newFontScale, num, [0] @ path);
+               pen.x = x;
+               pen.y = y;
+               pen.y = pen.y +. 30.;
+               render(~fontScale=newFontScale, den, [1] @ path);
+               pen.y = y;
+             | _ =>
+               List.iteri(
+                 (i, child) => {
+                   if (cursorPath^ == [i] @ path) {
+                     drawCursor(ctx, pen, fontSize);
+                   };
+                   render(~fontScale=newFontScale, child, [i] @ path);
+                 },
+                 children,
+               )
+             };
              if (cursorPath^ == [List.length(children)] @ path) {
                drawCursor(ctx, pen, fontSize);
              };
@@ -324,17 +337,48 @@ Js.Promise.(
                        /* Handle leaving a Box */
                        switch (parentPath) {
                        | [] => cursorPath^
-                       | _ =>
-                         /* [top - 1] @ grandparentPath */
-                         parentPath
+                       | [parent, ...grandparentPath] =>
+                         let grandparentNode =
+                           nodeForPath(grandparentPath, ast^);
+                         switch (grandparentNode) {
+                         /* navigate out of numerator */
+                         | Box(_, Frac, _) when parent == 0 => grandparentPath
+                         /* navigate from denominator to numerator */
+                         | Box(_, Frac, _) when parent == 1 =>
+                           let prevParentNode =
+                             nodeForPath([0] @ grandparentPath, ast^);
+                           switch (prevParentNode) {
+                           | Box(_, _, children) =>
+                             [List.length(children), 0] @ grandparentPath
+                           | Glyph(_, _) => raise(Unhandled)
+                           };
+                         /* navigate out of child to parent */
+                         | _ => parentPath
+                         };
                        };
                      } else {
                        let prevNode =
                          nodeForPath([top - 1] @ parentPath, ast^);
                        switch (prevNode) {
-                       | Box(_, _, children) =>
+                       | Box(_, kind, children) =>
                          /* Handle entering a Box */
-                         [List.length(children), top - 1] @ parentPath
+                         switch (kind) {
+                         /* If it's a fraction, navigate to the last child of the denominator */
+                         | Frac =>
+                           let lastChild =
+                             List.nth(children, List.length(children) - 1);
+                           switch (lastChild) {
+                           | Box(_, _, grandchildren) =>
+                             [
+                               List.length(grandchildren),
+                               List.length(children) - 1,
+                               top - 1,
+                             ]
+                             @ parentPath
+                           | Glyph(_, _) => raise(Unhandled)
+                           };
+                         | _ => [List.length(children), top - 1] @ parentPath
+                         }
                        | Glyph(_, _) => [top - 1] @ parentPath
                        };
                      }
@@ -355,12 +399,30 @@ Js.Promise.(
                        switch (parentPath) {
                        | [] => cursorPath^
                        | [parent, ...grandparentPath] =>
-                         [parent + 1] @ grandparentPath
+                         let grandparentNode =
+                           nodeForPath(grandparentPath, ast^);
+                         switch (grandparentNode) {
+                         /* Navigate from numerator to denominator */
+                         | Box(_, Frac, _) when parent == 0 =>
+                           [0, 1] @ grandparentPath
+                         /* Navigate out of denominator */
+                         | Box(_, Frac, _) when parent == 1 =>
+                           let [gp, ...rest] = grandparentPath;
+                           [gp + 1, ...rest];
+                         /* Navigate out of child to parent */
+                         | _ => [parent + 1] @ grandparentPath
+                         };
                        };
                      } else {
                        let nextNode = nodeForPath(cursorPath^, ast^);
                        switch (nextNode) {
-                       | Box(_, _, _) => [0] @ cursorPath^
+                       /* Handle entering a Box */
+                       | Box(_, kind, _) =>
+                         switch (kind) {
+                         /* If it's a fraction, navigate into first child of the numerator */
+                         | Frac => [0, 0] @ cursorPath^
+                         | _ => [0] @ cursorPath^
+                         }
                        | Glyph(_, _) => [top + 1] @ parentPath
                        };
                      }
@@ -390,6 +452,29 @@ Js.Promise.(
                    let parentNode = nodeForPath(parentPath, ast^);
                    ast := insertIntoTree(ast^, parentNode, top, sub);
                    [1, top] @ parentPath;
+                 }
+               );
+           | "/" =>
+             let num = Box(genId(), Row, [Glyph(genId(), '1')]);
+             let den =
+               Box(
+                 genId(),
+                 Row,
+                 [
+                   Glyph(genId(), 'x'),
+                   Glyph(genId(), '+'),
+                   Glyph(genId(), '1'),
+                 ],
+               );
+             let frac = Box(genId(), Frac, [num, den]);
+             cursorPath :=
+               (
+                 switch (cursorPath^) {
+                 | [] => []
+                 | [top, ...parentPath] =>
+                   let parentNode = nodeForPath(parentPath, ast^);
+                   ast := insertIntoTree(ast^, parentNode, top, frac);
+                   [top + 1] @ parentPath;
                  }
                );
            | "(" =>
