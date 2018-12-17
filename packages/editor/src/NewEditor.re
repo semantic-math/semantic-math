@@ -50,21 +50,22 @@ let ctx = CanvasRenderer.makeContext(1000, 600);
 
 let cursorPath = ref([0]);
 
-let rec _nodeForPath = (path: list(int), node) =>
-  switch (path) {
-  | [] => node
-  | [hd, ...tl] =>
-    switch (node) {
-    | Box(_, _, children) => _nodeForPath(tl, List.nth(children, hd))
-    | Glyph(_, _) => raise(Unhandled)
-    }
-  };
+let nodeForPath = (path: list(int), ast) => {
+  let rec _nodeForPath = (path: list(int), node) =>
+    switch (path) {
+    | [] => node
+    | [hd, ...tl] =>
+      switch (node) {
+      | Box(_, _, children) => _nodeForPath(tl, List.nth(children, hd))
+      | Glyph(_, _) => raise(Unhandled)
+      }
+    };
 
-let nodeForPath = (path: list(int), node) =>
   /* Note: the iteration order is opposite of the normal use of the paths which usually
      has the top of the stack first.  Here we need the bottom of the stack first b/c we're
      traversing a tree. */
-  _nodeForPath(List.rev(path), node);
+  _nodeForPath(List.rev(path), ast);
+};
 
 let ast =
   ref(
@@ -161,12 +162,13 @@ let rec indexOf = (x, lst, c) =>
   | [hd, ...tl] => hd == x ? c : indexOf(x, tl, c + 1)
   };
 
-let insertIntoTree = (ast, parentNode, index, newNode) => {
+let insertIntoTree = (ast, path, index, newNode) => {
+  let pathNode = nodeForPath(path, ast);
   let newAst =
     transform(
       node =>
-        node == parentNode ?
-          switch (parentNode) {
+        node == pathNode ?
+          switch (pathNode) {
           | Box(id, kind, children) =>
             Some(Box(id, kind, insert_at(index, newNode, children)))
           | Glyph(_, _) => raise(Unhandled)
@@ -437,8 +439,7 @@ Js.Promise.(
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
-                   let parentNode = nodeForPath(parentPath, ast^);
-                   ast := insertIntoTree(ast^, parentNode, top, sup);
+                   ast := insertIntoTree(ast^, parentPath, top, sup);
                    [1, top] @ parentPath;
                  }
                );
@@ -449,8 +450,7 @@ Js.Promise.(
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
-                   let parentNode = nodeForPath(parentPath, ast^);
-                   ast := insertIntoTree(ast^, parentNode, top, sub);
+                   ast := insertIntoTree(ast^, parentPath, top, sub);
                    [1, top] @ parentPath;
                  }
                );
@@ -472,8 +472,7 @@ Js.Promise.(
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
-                   let parentNode = nodeForPath(parentPath, ast^);
-                   ast := insertIntoTree(ast^, parentNode, top, frac);
+                   ast := insertIntoTree(ast^, parentPath, top, frac);
                    [top + 1] @ parentPath;
                  }
                );
@@ -484,8 +483,7 @@ Js.Promise.(
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
-                   let parentNode = nodeForPath(parentPath, ast^);
-                   ast := insertIntoTree(ast^, parentNode, top, parens);
+                   ast := insertIntoTree(ast^, parentPath, top, parens);
                    [0, top] @ parentPath;
                  }
                );
@@ -495,11 +493,10 @@ Js.Promise.(
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
-                   let parentNode = nodeForPath(parentPath, ast^);
                    ast :=
                      insertIntoTree(
                        ast^,
-                       parentNode,
+                       parentPath,
                        top,
                        Glyph(genId(), key.[0]),
                      );
