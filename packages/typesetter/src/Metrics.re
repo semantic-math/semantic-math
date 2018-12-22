@@ -1,3 +1,4 @@
+[%%debugger.chrome];
 type glyph = {
   advance: float,
   bearingX: float,
@@ -21,7 +22,9 @@ let fontData: font_data = {
 type metrics = {
   getCharWidth: (Char.t, float) => float,
   getCharHeight: (Char.t, float) => float,
+  getCharAscent: (Char.t, float) => float,
   getCharDepth: (Char.t, float) => float,
+  getCharDescent: (Char.t, float) => float,
   getMetrics: (Char.t, float) => glyph,
 };
 
@@ -93,7 +96,9 @@ let make = (json: Js.Json.t): metrics => {
   {
     getCharWidth: getCharWidth,
     getCharHeight: getCharHeight,
+    getCharAscent: getCharHeight,
     getCharDepth: getCharDepth,
+    getCharDescent: getCharDepth,
     getMetrics: getMetrics,
   };
 };

@@ -67,6 +67,40 @@ let nodeForPath = (path: list(int), ast) => {
   _nodeForPath(List.rev(path), ast);
 };
 
+/* TODO: add parent */
+type cursor = {
+  left: option(node),
+  right: option(node),
+  parent: node,
+};
+
+let cursorForPath = (path: list(int), ast) => {
+  let rec _cursorForPath = (path: list(int), node) =>
+    switch (path) {
+    | [] => raise(Unhandled)
+    | [hd] =>
+      switch (node) {
+      | Box(_, _, children) =>
+        let cursor = {
+          left: hd > 0 ? Some(List.nth(children, hd - 1)) : None,
+          right:
+            hd < List.length(children) ?
+              Some(List.nth(children, hd)) : None,
+          parent: node,
+        };
+        cursor;
+      | Glyph(_, _) => raise(Unhandled)
+      }
+    | [hd, ...tl] =>
+      switch (node) {
+      | Box(_, _, children) => _cursorForPath(tl, List.nth(children, hd))
+      | Glyph(_, _) => raise(Unhandled)
+      }
+    };
+
+  _cursorForPath(List.rev(path), ast);
+};
+
 let ast =
   ref(
     Box(
@@ -83,6 +117,70 @@ let ast =
       ],
     ),
   );
+
+type typesetter = {typeset: node => NewLayout.node};
+
+let makeTypesetter = (metrics: Metrics.metrics) => {
+  let rec typeset = (~fontScale=1.0, ast: node): NewLayout.node =>
+    switch (ast) {
+    | Box(id, Row, children) => (
+        Some(id),
+        NewLayout.Box(
+          0.,
+          NewLayout.hpackNat(List.map(typeset(~fontScale), children)),
+        ),
+      )
+    | Box(id, Sup, children) => (
+        Some(id),
+        NewLayout.Box(
+          -30.,
+          NewLayout.hpackNat(
+            List.map(
+              typeset(~fontScale=fontScale == 1. ? 0.8 : 0.65),
+              children,
+            ),
+          ),
+        ),
+      )
+    | Box(id, Parens, children) =>
+      let childrenWithParens =
+        [Glyph(-1, '(')] @ children @ [Glyph(-1, ')')];
+      (
+        Some(id),
+        NewLayout.Box(
+          0.,
+          NewLayout.hpackNat(
+            List.map(typeset(~fontScale), childrenWithParens),
+          ),
+        ),
+      );
+    | Box(id, Frac, children) =>
+      let [num, den] = children;
+      let children = [typeset(~fontScale, num), typeset(~fontScale, den)];
+      (
+        Some(id),
+        NewLayout.Box(
+          0.,
+          {
+            kind: NewLayout.VBox,
+            width: NewLayout.vlistWidth(children),
+            ascent: NewLayout.vlistHeight(children) /. 2.,
+            descent: NewLayout.vlistHeight(children) /. 2.,
+            children,
+          },
+        ),
+      );
+    | Glyph(id, char) => (
+        Some(id),
+        NewLayout.Glyph(char, fontScale *. 60., metrics),
+      )
+    | _ => (None, NewLayout.Kern(0.))
+    };
+
+  let typsetter = {typeset: typeset};
+
+  typsetter;
+};
 
 let rec fold_left = (i: int, f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
   switch (l) {
@@ -156,6 +254,104 @@ let drawChar = (ctx, pen, c, fontSize) => {
   ctx |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
 };
 
+let idForNode = node =>
+  switch (node) {
+  | Box(id, _, _) => id
+  | Glyph(id, _) => id
+  };
+
+let rec renderLayout =
+        (
+          ctx: Webapi.Canvas.Canvas2d.t,
+          layout: NewLayout.node,
+          cursor: cursor,
+        ) => {
+  let pen = {x: 0., y: 0.};
+
+  switch (layout) {
+  | (Some(id), _) =>
+    switch (cursor.right) {
+    | Some(node) =>
+      let cursorId = idForNode(node);
+      if (cursorId == id) {
+        drawCursor(ctx, pen, 60.);
+      };
+    | _ =>
+      switch (cursor.left) {
+      | Some(node) =>
+        let cursorId = idForNode(node);
+        if (cursorId == id) {
+          let pen = {x: pen.x +. NewLayout.width(layout), y: pen.y};
+          drawCursor(ctx, pen, 60.);
+        };
+      | _ => ()
+      }
+    }
+  | _ => ()
+  };
+
+  switch (layout) {
+  | (id, Box(shift, {kind, children})) =>
+    switch (kind) {
+    | NewLayout.HBox =>
+      Canvas2dRe.save(ctx);
+      Canvas2dRe.translate(~x=0., ~y=shift, ctx);
+
+      let cursorIndex: int =
+        switch (cursor) {
+        | {left: None, right: None, parent} =>
+          switch (id) {
+          | Some(id) when id == idForNode(parent) =>
+            switch (parent) {
+            | Box(_, Parens, _) => 1
+            | Box(_, Sup, _) => 0
+            | Box(_, Sub, _) => 0
+            | _ => (-1)
+            }
+          | _ => (-1)
+          }
+        | _ => (-1)
+        };
+
+      /* If the cursorIndex is 0, we draw it before iterating through
+         the node's children.  This handles the case where children is
+         an empty list. */
+      if (cursorIndex == 0) {
+        drawCursor(ctx, pen, 60.);
+      };
+
+      List.iteri(
+        (index, child) => {
+          if (index == cursorIndex) {
+            drawCursor(ctx, pen, 60.);
+          };
+          Canvas2dRe.save(ctx);
+          Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
+          renderLayout(ctx, child, cursor);
+          Canvas2dRe.restore(ctx);
+          pen.x = pen.x +. NewLayout.width(child);
+        },
+        children,
+      );
+      Canvas2dRe.restore(ctx);
+    | NewLayout.VBox =>
+      List.iter(
+        child => {
+          let height = NewLayout.vheight(child);
+          Canvas2dRe.save(ctx);
+          Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
+          renderLayout(ctx, child, cursor);
+          Canvas2dRe.restore(ctx);
+          pen.y = pen.y +. height;
+        },
+        children,
+      )
+    }
+  | (_, Glyph(char, size, _)) => drawChar(ctx, pen, char, size)
+  | _ => ()
+  };
+};
+
 let rec indexOf = (x, lst, c) =>
   switch (lst) {
   | [] => raise(NotFound)
@@ -187,8 +383,7 @@ Js.Promise.(
   |> then_(Fetch.Response.json)
   |> then_(json => {
        let metrics = Metrics.make(json);
-
-       Js.log(json);
+       let typsetter = makeTypesetter(metrics);
 
        let update = () => {
          /* clear canvas */
@@ -197,6 +392,20 @@ Js.Promise.(
 
          /* set styles */
          ctx->Canvas2d.setFillStyle(String, "#000000");
+
+         let cursor = cursorForPath(cursorPath^, ast^);
+         /* let cursorNode = nodeForPath(cursorPath^, ast^);
+            let id =
+              switch (cursorNode) {
+              | Box(id, _, _) => id
+              | Glyph(id, _) => id
+              };
+            Js.log({j|cursorNode id = $id|j}); */
+         let layout = typsetter.typeset(ast^);
+         Canvas2dRe.save(ctx);
+         Canvas2dRe.translate(~x=100., ~y=100., ctx);
+         renderLayout(ctx, layout, cursor);
+         Canvas2dRe.restore(ctx);
 
          /* typeset stuff */
          let pen = {x: 0., y: 300.};
