@@ -121,6 +121,8 @@ let ast =
 type typesetter = {typeset: node => NewLayout.node};
 
 let makeTypesetter = (metrics: Metrics.metrics) => {
+  /* TODO: split this into typesetBox and typesetGlyph */
+
   let rec typeset = (~fontScale=1.0, ast: node): NewLayout.node =>
     switch (ast) {
     | Box(id, Row, children) => (
@@ -155,21 +157,37 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
         ),
       );
     | Box(id, Frac, children) =>
-      let [num, den] = children;
-      let children = [typeset(~fontScale, num), typeset(~fontScale, den)];
-      (
-        Some(id),
-        NewLayout.Box(
-          0.,
-          {
-            kind: NewLayout.VBox,
-            width: NewLayout.vlistWidth(children),
-            ascent: NewLayout.vlistHeight(children) /. 2.,
-            descent: NewLayout.vlistHeight(children) /. 2.,
-            children,
-          },
-        ),
-      );
+      switch (children) {
+      | [num, den] =>
+        let numLayout = typeset(~fontScale, num);
+        let denLayout = typeset(~fontScale, den);
+        let width = NewLayout.vlistWidth([numLayout, denLayout]);
+
+        let children = [
+          numLayout,
+          (None, Kern(8.)),
+          (None, NewLayout.Rule({width, ascent: 2., descent: 2.})),
+          (None, Kern(8.)),
+          denLayout,
+        ];
+        let ascent = 2. +. 8. +. NewLayout.vheight(numLayout);
+        let descent = 2. +. 8. +. NewLayout.vheight(denLayout);
+
+        (
+          Some(id),
+          NewLayout.Box(
+            19.,
+            {
+              kind: NewLayout.VBox,
+              width: NewLayout.vlistWidth(children),
+              ascent,
+              descent,
+              children,
+            },
+          ),
+        );
+      | _ => raise(Unhandled)
+      }
     | Glyph(id, char) => (
         Some(id),
         NewLayout.Glyph(char, fontScale *. 60., metrics),
@@ -291,11 +309,11 @@ let rec renderLayout =
   };
 
   switch (layout) {
-  | (id, Box(shift, {kind, children})) =>
+  | (id, Box(shift, {kind, children, ascent: parentAscent})) =>
     switch (kind) {
     | NewLayout.HBox =>
       Canvas2dRe.save(ctx);
-      Canvas2dRe.translate(~x=0., ~y=shift, ctx);
+      Canvas2dRe.translate(~x=0., ~y=-.shift, ctx);
 
       let cursorIndex: int =
         switch (cursor) {
@@ -336,18 +354,30 @@ let rec renderLayout =
       Canvas2dRe.restore(ctx);
     | NewLayout.VBox =>
       List.iter(
-        child => {
-          let height = NewLayout.vheight(child);
-          Canvas2dRe.save(ctx);
-          Canvas2dRe.translate(~x=pen.x, ~y=pen.y, ctx);
-          renderLayout(ctx, child, cursor);
-          Canvas2dRe.restore(ctx);
-          pen.y = pen.y +. height;
+        (child) => {
+          switch (child) {
+          | (_, NewLayout.Kern(size)) => pen.y = pen.y +. size;
+          | _ => 
+            pen.y = pen.y +. NewLayout.ascent(child);
+            Canvas2dRe.save(ctx);
+            Canvas2dRe.translate(~x=pen.x, ~y=pen.y -. parentAscent -. shift, ctx);
+            renderLayout(ctx, child, cursor);
+            Canvas2dRe.restore(ctx);
+            pen.y = pen.y +. NewLayout.descent(child);
+          }
         },
         children,
       )
     }
   | (_, Glyph(char, size, _)) => drawChar(ctx, pen, char, size)
+  | (_, Rule({width, ascent, descent})) =>
+    Canvas2dRe.fillRect(
+      ~x=pen.x,
+      ~y=pen.y -. ascent,
+      ~w=pen.x +. width,
+      ~h=ascent +. descent,
+      ctx,
+    )
   | _ => ()
   };
 };

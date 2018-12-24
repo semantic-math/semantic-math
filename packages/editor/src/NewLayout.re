@@ -37,7 +37,7 @@ let width = ((_, t): node) =>
 
 let ascent = ((_, t): node) =>
   switch (t) {
-  | Box(_, {width}) => width
+  | Box(shift, {ascent}) => ascent +. shift
   | Glyph(char, size, metrics) => metrics.getCharAscent(char, size)
   | Kern(_) => 0.
   | Rule({ascent}) => ascent
@@ -45,7 +45,7 @@ let ascent = ((_, t): node) =>
 
 let descent = ((_, t): node) =>
   switch (t) {
-  | Box(_, {descent}) => descent
+  | Box(shift, {descent}) => descent -. shift
   | Glyph(char, size, metrics) => metrics.getCharDescent(char, size)
   | Kern(_) => 0.
   | Rule({descent}) => descent
