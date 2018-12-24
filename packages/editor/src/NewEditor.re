@@ -120,6 +120,32 @@ let ast =
 
 type typesetter = {typeset: node => NewLayout.node};
 
+let flat_mp = (fn: 'a => list('b), ls: list('a)): list('b) =>
+  List.fold_left((accu, item) => accu @ fn(item), [], ls);
+
+let rec fold_left = (i: int, f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
+  switch (l) {
+  | [] => accu
+  | [h, ...t] => fold_left(i + 1, f, f(accu, i, h), t)
+  };
+
+let fold_left = (f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
+  fold_left(0, f, accu, l);
+
+let flat_mapi = (fn: (int, 'a) => list('b), ls: list('a)): list('b) =>
+  fold_left((accu, index, item) => accu @ fn(index, item), [], ls);
+
+let isOperator = node =>
+  switch (node) {
+  | Glyph(_, c) =>
+    let index =
+      try (String.index("+-=<>*", c)) {
+      | Not_found => (-1)
+      };
+    index != (-1);
+  | _ => false
+  };
+
 let makeTypesetter = (metrics: Metrics.metrics) => {
   /* TODO: split this into typesetBox and typesetGlyph */
 
@@ -129,13 +155,54 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
         Some(id),
         NewLayout.Box(
           0.,
-          NewLayout.hpackNat(List.map(typeset(~fontScale), children)),
+          NewLayout.hpackNat(
+            flat_mapi(
+              (i, child) => {
+                Js.log({j|i = $i|j});
+                switch (child) {
+                | Glyph(id, c) =>
+                  let addSpace =
+                    if (isOperator(child)) {
+                      if (i == 0) {
+                        false;
+                      } else {
+                        !isOperator(List.nth(children, i - 1));
+                      };
+                    } else {
+                      false;
+                    };
+                  if (addSpace) {
+                    [
+                      (
+                        Some(id),
+                        NewLayout.Box(
+                          0.,
+                          NewLayout.hpackNat([
+                            (None, Kern(16.)),
+                            (
+                              None,
+                              Glyph(c, fontScale *. 60., metrics),
+                            ),
+                            (None, NewLayout.Kern(16.)),
+                          ]),
+                        ),
+                      ),
+                    ];
+                  } else {
+                    [typeset(~fontScale, child)];
+                  };
+                | _ => [typeset(~fontScale, child)]
+                };
+              },
+              children,
+            ),
+          ),
         ),
       )
     | Box(id, Sup, children) => (
         Some(id),
         NewLayout.Box(
-          -30.,
+          30.,
           NewLayout.hpackNat(
             List.map(
               typeset(~fontScale=fontScale == 1. ? 0.8 : 0.65),
@@ -188,10 +255,9 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
         );
       | _ => raise(Unhandled)
       }
-    | Glyph(id, char) => (
-        Some(id),
-        NewLayout.Glyph(char, fontScale *. 60., metrics),
-      )
+    | Glyph(id, c) =>
+      let c = c == '*' ? Js.String.fromCharCode(183).[0] : c;
+      (Some(id), NewLayout.Glyph(c, fontScale *. 60., metrics));
     | _ => (None, NewLayout.Kern(0.))
     };
 
@@ -199,15 +265,6 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
 
   typsetter;
 };
-
-let rec fold_left = (i: int, f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
-  switch (l) {
-  | [] => accu
-  | [h, ...t] => fold_left(i + 1, f, f(accu, i + 1, h), t)
-  };
-
-let fold_left = (f: ('a, int, 'b) => 'a, accu: 'a, l: list('b)) =>
-  fold_left(0, f, accu, l);
 
 /* TODO: create function to transform the ast */
 type visitor = node => option(node);
@@ -286,6 +343,7 @@ let rec renderLayout =
         ) => {
   let pen = {x: 0., y: 0.};
 
+  /* render cursor */
   switch (layout) {
   | (Some(id), _) =>
     switch (cursor.right) {
@@ -313,7 +371,7 @@ let rec renderLayout =
     switch (kind) {
     | NewLayout.HBox =>
       Canvas2dRe.save(ctx);
-      Canvas2dRe.translate(~x=0., ~y=-.shift, ctx);
+      Canvas2dRe.translate(~x=0., ~y=-. shift, ctx);
 
       let cursorIndex: int =
         switch (cursor) {
@@ -354,18 +412,21 @@ let rec renderLayout =
       Canvas2dRe.restore(ctx);
     | NewLayout.VBox =>
       List.iter(
-        (child) => {
+        child =>
           switch (child) {
-          | (_, NewLayout.Kern(size)) => pen.y = pen.y +. size;
-          | _ => 
+          | (_, NewLayout.Kern(size)) => pen.y = pen.y +. size
+          | _ =>
             pen.y = pen.y +. NewLayout.ascent(child);
             Canvas2dRe.save(ctx);
-            Canvas2dRe.translate(~x=pen.x, ~y=pen.y -. parentAscent -. shift, ctx);
+            Canvas2dRe.translate(
+              ~x=pen.x,
+              ~y=pen.y -. parentAscent -. shift,
+              ctx,
+            );
             renderLayout(ctx, child, cursor);
             Canvas2dRe.restore(ctx);
             pen.y = pen.y +. NewLayout.descent(child);
-          }
-        },
+          },
         children,
       )
     }
@@ -433,91 +494,10 @@ Js.Promise.(
             Js.log({j|cursorNode id = $id|j}); */
          let layout = typsetter.typeset(ast^);
          Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=100., ~y=100., ctx);
+         Canvas2dRe.translate(~x=100., ~y=300., ctx);
          renderLayout(ctx, layout, cursor);
          Canvas2dRe.restore(ctx);
 
-         /* typeset stuff */
-         let pen = {x: 0., y: 300.};
-
-         let rec render = (~fontScale=1., node, path) =>
-           switch (node) {
-           | Box(_, kind, children) =>
-             let newFontScale =
-               switch (kind) {
-               | Sup
-               | Sub => fontScale == 1.0 ? 0.8 : 0.65
-               | _ => fontScale
-               };
-             /* We render the cursor for the child nodes in the parent b/c
-                we don't know the index, if we could pass the index to the
-                render function then we could render the cursor at the same
-                time we render the glyh */
-             let fontSize = newFontScale *. 60.;
-             switch (kind) {
-             | Sup => pen.y = pen.y -. 30.
-             | Sub => pen.y = pen.y +. 30.
-             | _ => ()
-             };
-             if (kind == Parens) {
-               drawChar(ctx, pen, '(', fontSize);
-               pen.x = pen.x +. metrics.getCharWidth('(', fontSize);
-             };
-             switch (kind) {
-             | Frac =>
-               let [num, den] = children;
-               let {x, y} = pen;
-               pen.y = pen.y -. 30.;
-               render(~fontScale=newFontScale, num, [0] @ path);
-               pen.x = x;
-               pen.y = y;
-               pen.y = pen.y +. 30.;
-               render(~fontScale=newFontScale, den, [1] @ path);
-               pen.y = y;
-             | _ =>
-               List.iteri(
-                 (i, child) => {
-                   if (cursorPath^ == [i] @ path) {
-                     drawCursor(ctx, pen, fontSize);
-                   };
-                   render(~fontScale=newFontScale, child, [i] @ path);
-                 },
-                 children,
-               )
-             };
-             if (cursorPath^ == [List.length(children)] @ path) {
-               drawCursor(ctx, pen, fontSize);
-             };
-             if (kind == Parens) {
-               drawChar(ctx, pen, ')', fontSize);
-               pen.x = pen.x +. metrics.getCharWidth(')', fontSize);
-             };
-             switch (kind) {
-             | Sup => pen.y = pen.y +. 30.
-             | Sub => pen.y = pen.y -. 30.
-             | _ => ()
-             };
-           | Glyph(_, c) =>
-             let fontSize = fontScale *. 60.;
-             /* TODO: check the previous sibling node, if it's punctuation
-                then we can't drop the padding */
-             switch (c) {
-             | '='
-             | '+'
-             | '-' => pen.x = pen.x +. 15.
-             | _ => ()
-             };
-             drawChar(ctx, pen, c, fontSize);
-             pen.x = pen.x +. metrics.getCharWidth(c, fontSize);
-             switch (c) {
-             | '='
-             | '+'
-             | '-' => pen.x = pen.x +. 15.
-             | _ => ()
-             };
-           };
-
-         render(ast^, []);
          Js.log(ast^);
          Js.log(toJson(ast^));
        };
