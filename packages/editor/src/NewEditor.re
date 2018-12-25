@@ -158,7 +158,6 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
           NewLayout.hpackNat(
             flat_mapi(
               (i, child) => {
-                Js.log({j|i = $i|j});
                 switch (child) {
                 | Glyph(id, c) =>
                   let addSpace =
@@ -179,10 +178,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
                           0.,
                           NewLayout.hpackNat([
                             (None, Kern(16.)),
-                            (
-                              None,
-                              Glyph(c, fontScale *. 60., metrics),
-                            ),
+                            (None, Glyph(c, fontScale *. 60., metrics)),
                             (None, NewLayout.Kern(16.)),
                           ]),
                         ),
@@ -229,13 +225,35 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
         let numLayout = typeset(~fontScale, num);
         let denLayout = typeset(~fontScale, den);
         let width = NewLayout.vlistWidth([numLayout, denLayout]);
+        let numWidth = NewLayout.width(numLayout);
+        let denWidth = NewLayout.width(denLayout);
 
         let children = [
-          numLayout,
+          (
+            None,
+            NewLayout.Box(
+              0.,
+              NewLayout.hpackNat([
+                (None, NewLayout.Kern((width -. numWidth) /. 2.)), 
+                numLayout,
+                (None, NewLayout.Kern((width -. numWidth) /. 2.)), 
+              ]),
+            ),
+          ),
           (None, Kern(8.)),
           (None, NewLayout.Rule({width, ascent: 2., descent: 2.})),
           (None, Kern(8.)),
-          denLayout,
+          (
+            None,
+            NewLayout.Box(
+              0.,
+              NewLayout.hpackNat([
+                (None, NewLayout.Kern((width -. denWidth) /. 2.)), 
+                denLayout,
+                (None, NewLayout.Kern((width -. denWidth) /. 2.)), 
+              ]),
+            ),
+          ),
         ];
         let ascent = 2. +. 8. +. NewLayout.vheight(numLayout);
         let descent = 2. +. 8. +. NewLayout.vheight(denLayout);
@@ -485,13 +503,6 @@ Js.Promise.(
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
          let cursor = cursorForPath(cursorPath^, ast^);
-         /* let cursorNode = nodeForPath(cursorPath^, ast^);
-            let id =
-              switch (cursorNode) {
-              | Box(id, _, _) => id
-              | Glyph(id, _) => id
-              };
-            Js.log({j|cursorNode id = $id|j}); */
          let layout = typsetter.typeset(ast^);
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=100., ~y=300., ctx);
@@ -509,7 +520,6 @@ Js.Promise.(
          event => {
            let key = KeyboardEvent.key(event);
            /* let processed = ref(false); */
-           Js.log(key);
            switch (key) {
            | "Meta"
            | "Shift"
@@ -652,25 +662,25 @@ Js.Promise.(
                  }
                )
            | "^" =>
-             let sup = Box(genId(), Sup, [Glyph(genId(), '2')]);
+             let sup = Box(genId(), Sup, []);
              cursorPath :=
                (
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
                    ast := insertIntoTree(ast^, parentPath, top, sup);
-                   [1, top] @ parentPath;
+                   [0, top] @ parentPath;
                  }
                );
            | "_" =>
-             let sub = Box(genId(), Sub, [Glyph(genId(), '2')]);
+             let sub = Box(genId(), Sub, []);
              cursorPath :=
                (
                  switch (cursorPath^) {
                  | [] => []
                  | [top, ...parentPath] =>
                    ast := insertIntoTree(ast^, parentPath, top, sub);
-                   [1, top] @ parentPath;
+                   [0, top] @ parentPath;
                  }
                );
            | "/" =>
