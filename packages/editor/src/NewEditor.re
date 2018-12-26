@@ -151,60 +151,83 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
 
   let rec typeset = (~fontScale=1.0, ast: node): NewLayout.node =>
     switch (ast) {
-    | Box(id, Row, children) => (
+    | Box(id, Row, children) => 
+      let box = NewLayout.hpackNat(
+        flat_mapi(
+          (i, child) => {
+            switch (child) {
+            | Glyph(id, c) =>
+              let addSpace =
+                if (isOperator(child)) {
+                  if (i == 0) {
+                    false;
+                  } else {
+                    !isOperator(List.nth(children, i - 1));
+                  };
+                } else {
+                  false;
+                };
+              if (addSpace) {
+                [
+                  (
+                    Some(id),
+                    NewLayout.Box(
+                      0.,
+                      NewLayout.hpackNat([
+                        (None, Kern(16.)),
+                        (None, Glyph(c, fontScale *. 60., metrics)),
+                        (None, NewLayout.Kern(16.)),
+                      ]),
+                    ),
+                  ),
+                ];
+              } else {
+                [typeset(~fontScale, child)];
+              };
+            | _ => [typeset(~fontScale, child)]
+            };
+          },
+          children,
+        ),
+      );
+      let size = 60. *. fontScale;
+      let minAscent = metrics.getCharAscent('1', size);
+      let minDescent = metrics.getCharDescent('y', size);
+      (
         Some(id),
         NewLayout.Box(
           0.,
-          NewLayout.hpackNat(
-            flat_mapi(
-              (i, child) => {
-                switch (child) {
-                | Glyph(id, c) =>
-                  let addSpace =
-                    if (isOperator(child)) {
-                      if (i == 0) {
-                        false;
-                      } else {
-                        !isOperator(List.nth(children, i - 1));
-                      };
-                    } else {
-                      false;
-                    };
-                  if (addSpace) {
-                    [
-                      (
-                        Some(id),
-                        NewLayout.Box(
-                          0.,
-                          NewLayout.hpackNat([
-                            (None, Kern(16.)),
-                            (None, Glyph(c, fontScale *. 60., metrics)),
-                            (None, NewLayout.Kern(16.)),
-                          ]),
-                        ),
-                      ),
-                    ];
-                  } else {
-                    [typeset(~fontScale, child)];
-                  };
-                | _ => [typeset(~fontScale, child)]
-                };
-              },
-              children,
-            ),
-          ),
+          {
+            kind: box.kind,
+            width: box.width,
+            ascent: Js.Math.max_float(box.ascent, minAscent),
+            descent: Js.Math.max_float(box.descent, minDescent),
+            children: box.children,
+          },
         ),
       )
-    | Box(id, Sup, children) => (
+    | Box(id, Sup, children) => 
+      let fontScale = fontScale == 1. ? 0.7 : 0.5;
+      let box = NewLayout.hpackNat(
+        List.map(
+          typeset(~fontScale),
+          children,
+        ),
+      );
+      let size = 60. *. fontScale;
+      let minAscent = metrics.getCharAscent('1', size);
+      let minDescent = metrics.getCharDescent('y', size);
+      (
         Some(id),
         NewLayout.Box(
           30.,
-          NewLayout.hpackNat(
-            List.map(
-              typeset(~fontScale=fontScale == 1. ? 0.8 : 0.65),
-              children,
-            ),
-          ),
+          {
+            kind: box.kind,
+            width: box.width,
+            ascent: Js.Math.max_float(box.ascent, minAscent),
+            descent: Js.Math.max_float(box.descent, minDescent),
+            children: box.children,
+          }
         ),
       )
     | Box(id, Parens, children) =>
@@ -222,6 +245,8 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
     | Box(id, Frac, children) =>
       switch (children) {
       | [num, den] =>
+        let originalFontScale = fontScale;
+        let fontScale = fontScale == 1.0 ? 1.0 : 0.5
         let numLayout = typeset(~fontScale, num);
         let denLayout = typeset(~fontScale, den);
         let width = NewLayout.vlistWidth([numLayout, denLayout]);
@@ -240,9 +265,9 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
               ]),
             ),
           ),
-          (None, Kern(8.)),
+          /* (None, Kern(fontScale *. 8.)), */
           (None, NewLayout.Rule({width, ascent: 2., descent: 2.})),
-          (None, Kern(8.)),
+          (None, Kern(fontScale *. 8.)),
           (
             None,
             NewLayout.Box(
@@ -255,13 +280,13 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
             ),
           ),
         ];
-        let ascent = 2. +. 8. +. NewLayout.vheight(numLayout);
+        let ascent = 2./* +. 8.*/ +. NewLayout.vheight(numLayout);
         let descent = 2. +. 8. +. NewLayout.vheight(denLayout);
 
         (
           Some(id),
           NewLayout.Box(
-            19.,
+            originalFontScale *. 19.,
             {
               kind: NewLayout.VBox,
               width: NewLayout.vlistWidth(children),
