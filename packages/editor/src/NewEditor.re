@@ -151,45 +151,45 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
 
   let rec typeset = (~fontScale=1.0, ast: node): NewLayout.node =>
     switch (ast) {
-    | Box(id, Row, children) => 
-      let box = NewLayout.hpackNat(
-        flat_mapi(
-          (i, child) => {
-            switch (child) {
-            | Glyph(id, c) =>
-              let addSpace =
-                if (isOperator(child)) {
-                  if (i == 0) {
-                    false;
+    | Box(id, Row, children) =>
+      let box =
+        NewLayout.hpackNat(
+          flat_mapi(
+            (i, child) =>
+              switch (child) {
+              | Glyph(id, c) =>
+                let addSpace =
+                  if (isOperator(child)) {
+                    if (i == 0) {
+                      false;
+                    } else {
+                      !isOperator(List.nth(children, i - 1));
+                    };
                   } else {
-                    !isOperator(List.nth(children, i - 1));
+                    false;
                   };
-                } else {
-                  false;
-                };
-              if (addSpace) {
-                [
-                  (
-                    Some(id),
-                    NewLayout.Box(
-                      0.,
-                      NewLayout.hpackNat([
-                        (None, Kern(16.)),
-                        (None, Glyph(c, fontScale *. 60., metrics)),
-                        (None, NewLayout.Kern(16.)),
-                      ]),
+                if (addSpace) {
+                  [
+                    (
+                      Some(id),
+                      NewLayout.Box(
+                        0.,
+                        NewLayout.hpackNat([
+                          (None, Kern(16.)),
+                          (None, Glyph(c, fontScale *. 60., metrics)),
+                          (None, NewLayout.Kern(16.)),
+                        ]),
+                      ),
                     ),
-                  ),
-                ];
-              } else {
-                [typeset(~fontScale, child)];
-              };
-            | _ => [typeset(~fontScale, child)]
-            };
-          },
-          children,
-        ),
-      );
+                  ];
+                } else {
+                  [typeset(~fontScale, child)];
+                };
+              | _ => [typeset(~fontScale, child)]
+              },
+            children,
+          ),
+        );
       let size = 60. *. fontScale;
       let minAscent = metrics.getCharAscent('1', size);
       let minDescent = metrics.getCharDescent('y', size);
@@ -205,31 +205,27 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
             children: box.children,
           },
         ),
-      )
-    | Box(id, Sup, children) => 
-      let fontScale = fontScale == 1. ? 0.7 : 0.5;
-      let box = NewLayout.hpackNat(
-        List.map(
-          typeset(~fontScale),
-          children,
-        ),
       );
+    | Box(id, kind, children) when kind == Sup || kind == Sub =>
+      let originalFontScale = fontScale;
+      let fontScale = fontScale == 1. ? 0.7 : 0.5;
+      let box = NewLayout.hpackNat(List.map(typeset(~fontScale), children));
       let size = 60. *. fontScale;
       let minAscent = metrics.getCharAscent('1', size);
       let minDescent = metrics.getCharDescent('y', size);
       (
         Some(id),
         NewLayout.Box(
-          30.,
+          originalFontScale *. (kind == Sup ? 24. : (-20.)),
           {
             kind: box.kind,
             width: box.width,
             ascent: Js.Math.max_float(box.ascent, minAscent),
             descent: Js.Math.max_float(box.descent, minDescent),
             children: box.children,
-          }
+          },
         ),
-      )
+      );
     | Box(id, Parens, children) =>
       let childrenWithParens =
         [Glyph(-1, '(')] @ children @ [Glyph(-1, ')')];
@@ -246,7 +242,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
       switch (children) {
       | [num, den] =>
         let originalFontScale = fontScale;
-        let fontScale = fontScale == 1.0 ? 1.0 : 0.5
+        let fontScale = fontScale == 1.0 ? 1.0 : 0.5;
         let numLayout = typeset(~fontScale, num);
         let denLayout = typeset(~fontScale, den);
         let width = NewLayout.vlistWidth([numLayout, denLayout]);
@@ -259,9 +255,9 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
             NewLayout.Box(
               0.,
               NewLayout.hpackNat([
-                (None, NewLayout.Kern((width -. numWidth) /. 2.)), 
+                (None, NewLayout.Kern((width -. numWidth) /. 2.)),
                 numLayout,
-                (None, NewLayout.Kern((width -. numWidth) /. 2.)), 
+                (None, NewLayout.Kern((width -. numWidth) /. 2.)),
               ]),
             ),
           ),
@@ -273,14 +269,14 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
             NewLayout.Box(
               0.,
               NewLayout.hpackNat([
-                (None, NewLayout.Kern((width -. denWidth) /. 2.)), 
+                (None, NewLayout.Kern((width -. denWidth) /. 2.)),
                 denLayout,
-                (None, NewLayout.Kern((width -. denWidth) /. 2.)), 
+                (None, NewLayout.Kern((width -. denWidth) /. 2.)),
               ]),
             ),
           ),
         ];
-        let ascent = 2./* +. 8.*/ +. NewLayout.vheight(numLayout);
+        let ascent = 2. /* +. 8.*/ +. NewLayout.vheight(numLayout);
         let descent = 2. +. 8. +. NewLayout.vheight(denLayout);
 
         (
@@ -687,27 +683,38 @@ Js.Promise.(
                  }
                )
            | "^" =>
-             let sup = Box(genId(), Sup, []);
-             cursorPath :=
-               (
-                 switch (cursorPath^) {
-                 | [] => []
-                 | [top, ...parentPath] =>
-                   ast := insertIntoTree(ast^, parentPath, top, sup);
-                   [0, top] @ parentPath;
-                 }
-               );
+             let cursorNode = nodeForPath(cursorPath^, ast^);
+             switch (cursorNode) {
+             | Box(_, Sup, _) => cursorPath := [0] @ cursorPath^
+             | _ =>
+               let sup = Box(genId(), Sup, []);
+               cursorPath :=
+                 (
+                   switch (cursorPath^) {
+                   | [] => []
+                   | [top, ...parentPath] =>
+                     ast := insertIntoTree(ast^, parentPath, top, sup);
+                     [0, top] @ parentPath;
+                   }
+                 );
+             };
            | "_" =>
-             let sub = Box(genId(), Sub, []);
-             cursorPath :=
-               (
-                 switch (cursorPath^) {
-                 | [] => []
-                 | [top, ...parentPath] =>
-                   ast := insertIntoTree(ast^, parentPath, top, sub);
-                   [0, top] @ parentPath;
-                 }
-               );
+             let cursorNode = nodeForPath(cursorPath^, ast^);
+             switch (cursorNode) {
+             | Box(_, Sub, _) => cursorPath := [0] @ cursorPath^
+             | _ =>
+               let sub = Box(genId(), Sub, []);
+               cursorPath :=
+                 (
+                   switch (cursorPath^) {
+                   | [] => []
+                   | [top, ...parentPath] =>
+                     ast := insertIntoTree(ast^, parentPath, top, sub);
+                     [0, top] @ parentPath;
+                   }
+                 );
+             };
+
            | "/" =>
              let num = Box(genId(), Row, [Glyph(genId(), '1')]);
              let den =
