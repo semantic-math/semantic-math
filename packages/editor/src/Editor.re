@@ -1,347 +1,328 @@
-open Node;
+[%%debugger.chrome];
+Js.log("NewEditor");
 
-let math = "1+x+x^2+x^3";
-let tokens = Lexer.lex(math);
-let ast = MathParser.parse(tokens);
+open Webapi.Canvas;
+open UniqueId;
+open EditorNode;
+open EditorTypsetter;
+open EditorRenderer;
+open Cursor;
 
-/**
- * TODO:
- * - traverse the layout
- * - find all leaf nodes
- * - create a mapping between AST nodes and layout nodes
- * - define rules for navigating within layout nodes
- */
+let ctx = CanvasRenderer.makeContext(1000, 600);
+let cursorPath = ref([0]);
 
-let debug = false;
+let ast =
+  ref(
+    Box(
+      genId(),
+      Row,
+      [
+        Glyph(genId(), '2'),
+        Glyph(genId(), 'x'),
+        Glyph(genId(), '+'),
+        Glyph(genId(), '5'),
+        Glyph(genId(), '='),
+        Glyph(genId(), '1'),
+        Glyph(genId(), '0'),
+      ],
+    ),
+  );
 
-type point = {
-  mutable x: float,
-  mutable y: float,
-};
+exception Unhandled;
 
-type rect = {
-  id: option(int),
-  x: float,
-  y: float,
-  w: float,
-  h: float,
-};
+let rec remove_at = (n: int, l: list('a)) =>
+  switch (l) {
+  | [] => []
+  | [h, ...t] => n == 0 ? t : [h, ...remove_at(n - 1, t)]
+  };
 
-/**
- * TODO:
- * - find the leaf nodes in the AST that have ids
- * - find the matching layout node
- * - use the layout node's position to place the cursor
- *
- * - use left/right to navigate between leaf nodes
- * - use number/letter keys to update leaf nodes
- */
+let rec insert_at = (n: int, x: 'a, l: list('a)) =>
+  switch (l) {
+  | [] => n == 0 ? [x] : []
+  | [h, ...t] => n == 0 ? [x, h, ...t] : [h, ...insert_at(n - 1, x, t)]
+  };
 
-let rec foldTree = (visitor, accum, node) => {
-  let (_, typ) = node;
-  switch (typ) {
-  | Node.Apply(_, children) =>
-    let result = List.fold_left(foldTree(visitor), accum, children);
-    visitor(result, node);
-  | _ => visitor(accum, node)
+let insertIntoTree = (ast, path, index, newNode) => {
+  let newAst =
+    switch (nodeForPath(path, ast)) {
+    | Some(pathNode) =>
+      transform(
+        node =>
+          node == pathNode ?
+            switch (pathNode) {
+            | Box(id, kind, children) =>
+              Some(Box(id, kind, insert_at(index, newNode, children)))
+            | Glyph(_, _) => raise(Unhandled)
+            } :
+            Some(node),
+        ast,
+      )
+    | None => raise(Unhandled)
+    };
+  switch (newAst) {
+  | Some(node) => node
+  | _ => raise(Unhandled)
   };
 };
 
-let getLeafNodes = ast => {
-  let leafNodes =
-    foldTree(
-      (accum, node) => {
-        let (_, typ) = node;
-        switch (typ) {
-        | Apply(_, _) => accum
-        | _ => accum @ [node]
-        };
-      },
-      [],
-      ast,
-    );
-  leafNodes;
-};
+exception NoNodeForPath;
 
-type cursor = {mutable index: int};
+type cursor_path = list(int);
 
-exception UnhandledEditorError;
+let processEvent =
+    (key: string, cursorPath: ref(cursor_path), ast: ref(node)) =>
+  switch (key) {
+  | "Meta"
+  | "Shift"
+  | "Alt"
+  | "Control" => ignore()
+  | "Backspace" =>
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          /* TODO: insert all nodes from the current box in the parent
+             at the location of the current box within the parent's children
+             list */
+          if (top == 0) {
+            cursorPath^;
+          } else {
+            let newCursorPath = [top - 1] @ parentPath;
+            let cursorNode =
+              switch (nodeForPath(newCursorPath, ast^)) {
+              | Some(node) => node
+              | None => raise(NoNodeForPath)
+              };
+            let newAst =
+              transform(
+                node => node == cursorNode ? None : Some(node),
+                ast^,
+              );
+            ast :=
+              (
+                switch (newAst) {
+                | Some(node) => node
+                | _ => raise(Unhandled)
+                }
+              );
+            newCursorPath;
+          }
+        }
+      )
+  | "ArrowLeft" =>
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          switch (nodeForPath(parentPath, ast^)) {
+          | Some(Box(_, _, _)) =>
+            if (top == 0) {
+              /* Handle leaving a Box */
+              switch (parentPath) {
+              | [] => cursorPath^
+              | [parent, ...grandparentPath] =>
+                switch (nodeForPath(grandparentPath, ast^)) {
+                /* navigate out of numerator */
+                | Some(Box(_, Frac, _)) when parent == 0 => grandparentPath
 
-let rec flatten = (~dx=0., ~dy=0., box): list(rect) => {
-  open Layout;
-  let pen = {x: dx, y: dy};
+                /* navigate from denominator to numerator */
+                | Some(Box(_, Frac, _)) when parent == 1 =>
+                  switch (nodeForPath([0] @ grandparentPath, ast^)) {
+                  | Some(Box(_, _, children)) =>
+                    [List.length(children), 0] @ grandparentPath
+                  | _ => raise(NoNodeForPath)
+                  };
 
-  switch (box) {
-  | {kind: HBox, width: w, content} =>
-    /* Finish glue calculations as per pg. 77 in the TeXBook */
-    let availableSpace = w -. hlistWidth(content);
-
-    List.fold_left(
-      (acc: list(rect), (id, atom)) =>
-        switch (atom) {
-        | Glyph(_, _, _) =>
-          let rect = {
-            id,
-            x: pen.x,
-            y: pen.y -. height((None, atom)),
-            w: width((None, atom)),
-            h: vsize((None, atom)),
+                /* navigate out of child to parent */
+                | _ => parentPath
+                };
+              };
+            } else {
+              switch (nodeForPath([top - 1] @ parentPath, ast^)) {
+              | Some(Box(_, kind, children)) =>
+                /* Handle entering a Box */
+                switch (kind) {
+                /* If it's a fraction, navigate to the last child of the denominator */
+                | Frac =>
+                  let lastChild =
+                    List.nth(children, List.length(children) - 1);
+                  switch (lastChild) {
+                  | Box(_, _, grandchildren) =>
+                    [
+                      List.length(grandchildren),
+                      List.length(children) - 1,
+                      top - 1,
+                    ]
+                    @ parentPath
+                  | Glyph(_, _) => raise(NoNodeForPath)
+                  };
+                | _ => [List.length(children), top - 1] @ parentPath
+                }
+              | Some(Glyph(_, _)) => [top - 1] @ parentPath
+              | _ => raise(NoNodeForPath)
+              };
+            }
+          | _ => raise(NoNodeForPath) /* Glyphs don't have children */
           };
-          pen.x = pen.x +. width((None, atom));
-          acc @ [rect];
-        | Box(shift, box) =>
-          let rects = flatten(~dx=pen.x, ~dy=pen.y +. shift, box);
-          pen.x = pen.x +. width((None, atom));
-          acc @ rects;
-        | Glue(_) =>
-          pen.x = pen.x +. availableSpace /. 2.;
-          acc;
-        | Kern(size) =>
-          pen.x = pen.x +. size;
-          acc;
-        | Rule({width: w}) =>
-          pen.x = pen.x +. w;
-          acc;
-        },
-      [],
-      content,
-    );
+        }
+      )
+  | "ArrowRight" =>
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          switch (nodeForPath(parentPath, ast^)) {
+          | Some(Box(_, _, children)) =>
+            if (top == List.length(children)) {
+              switch (parentPath) {
+              | [] => cursorPath^
+              | [parent, ...grandparentPath] =>
+                switch (nodeForPath(grandparentPath, ast^)) {
+                /* Navigate from numerator to denominator */
+                | Some(Box(_, Frac, _)) when parent == 0 =>
+                  [0, 1] @ grandparentPath
 
-  | {kind: VBox, content} =>
-    pen.y = pen.y -. box.height;
-    List.fold_left(
-      (acc: list(rect), (id, atom)) =>
-        switch (atom) {
-        | Box(shift, box) =>
-          pen.y = pen.y +. height((None, atom));
-          let rects = flatten(~dx=pen.x, ~dy=pen.y +. shift, box);
-          pen.y = pen.y +. depth((None, atom));
-          acc @ rects;
-        | Rule({width: w, height: h, depth: d}) =>
-          pen.y = pen.y +. height((None, atom));
-          let rect = {id, x: pen.x, y: pen.y -. h, w, h: h +. d};
-          pen.y = pen.y +. depth((None, atom));
-          acc @ [rect];
-        | Kern(size) =>
-          pen.y = pen.y +. size;
-          acc;
-        | _ => acc
-        },
-      [],
-      content,
-    );
+                /* Navigate out of denominator */
+                | Some(Box(_, Frac, _)) when parent == 1 =>
+                  switch (grandparentPath) {
+                  | [gp, ...rest] => [gp + 1, ...rest]
+                  | _ => raise(Unhandled)
+                  }
+
+                /* Navigate out of child to parent */
+                | _ => [parent + 1] @ grandparentPath
+                }
+              };
+            } else {
+              switch (nodeForPath(cursorPath^, ast^)) {
+              /* Handle entering a Box */
+              | Some(Box(_, kind, _)) =>
+                switch (kind) {
+                /* If it's a fraction, navigate into first child of the numerator */
+                | Frac => [0, 0] @ cursorPath^
+                | _ => [0] @ cursorPath^
+                }
+              | Some(Glyph(_, _)) => [top + 1] @ parentPath
+              | _ => raise(Unhandled)
+              };
+            }
+          | _ => raise(Unhandled) /* Glyphs don't have children */
+          }
+        }
+      )
+  | "^" =>
+    switch (nodeForPath(cursorPath^, ast^)) {
+    | Some(Box(_, Sup, _)) => cursorPath := [0] @ cursorPath^
+    | _ =>
+      let sup = Box(genId(), Sup, []);
+      cursorPath :=
+        (
+          switch (cursorPath^) {
+          | [] => []
+          | [top, ...parentPath] =>
+            ast := insertIntoTree(ast^, parentPath, top, sup);
+            [0, top] @ parentPath;
+          }
+        );
+    }
+  | "_" =>
+    switch (nodeForPath(cursorPath^, ast^)) {
+    | Some(Box(_, Sub, _)) => cursorPath := [0] @ cursorPath^
+    | _ =>
+      let sub = Box(genId(), Sub, []);
+      cursorPath :=
+        (
+          switch (cursorPath^) {
+          | [] => []
+          | [top, ...parentPath] =>
+            ast := insertIntoTree(ast^, parentPath, top, sub);
+            [0, top] @ parentPath;
+          }
+        );
+    }
+  | "/" =>
+    let num = Box(genId(), Row, [Glyph(genId(), '1')]);
+    let den =
+      Box(
+        genId(),
+        Row,
+        [Glyph(genId(), 'x'), Glyph(genId(), '+'), Glyph(genId(), '1')],
+      );
+    let frac = Box(genId(), Frac, [num, den]);
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          ast := insertIntoTree(ast^, parentPath, top, frac);
+          [top + 1] @ parentPath;
+        }
+      );
+  | "(" =>
+    let parens = Box(genId(), Parens, []);
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          ast := insertIntoTree(ast^, parentPath, top, parens);
+          [0, top] @ parentPath;
+        }
+      );
+  | _ =>
+    cursorPath :=
+      (
+        switch (cursorPath^) {
+        | [] => []
+        | [top, ...parentPath] =>
+          ast :=
+            insertIntoTree(ast^, parentPath, top, Glyph(genId(), key.[0]));
+          [top + 1] @ parentPath;
+        }
+      )
   };
-};
 
 Js.Promise.(
   Fetch.fetch("/packages/typesetter/metrics/comic-sans.json")
   |> then_(Fetch.Response.json)
   |> then_(json => {
        let metrics = Metrics.make(json);
-       let typsetter = Typesetter.make(~baseFontSize=200., metrics);
+       let typsetter = makeTypesetter(metrics);
 
-       let renderToCanvas = math => {
-         open Webapi.Canvas;
-
-         let tokens = Lexer.lex(math);
-         let ast = ref(MathParser.parse(tokens));
-         let leafNodes = ref(getLeafNodes(ast^));
-         List.iter(node => Js.log(Node.toString(node)), leafNodes^);
-         let box = typsetter.typeset(ast^);
-         let layout = Layout.hpackNat([box]);
-
-         Js.log(layout);
-         Js.log(Layout.toJson(box));
-
-         /* TODO: replace with function to get full height */
-         let {Layout.width, Layout.height, Layout.depth} = layout;
-         let ctx =
-           CanvasRenderer.makeContext(
-             Js_math.ceil(width),
-             Js_math.ceil(height +. depth),
-           );
-
-         /* enable retina mode */
-         ctx |> Canvas2d.scale(~x=2., ~y=2.);
-
-         /* TODO: avoid having to pass in the height */
-         let flatLayout = flatten(~dy=layout.height, layout);
-         open Webapi.Dom;
-
-         Document.addClickEventListener(
-           event => {
-             let x = float_of_int(MouseEvent.pageX(event)) -. 16.;
-             let y = float_of_int(MouseEvent.pageY(event)) -. 16.;
-
-             List.iteri(
-               (_, rect) =>
-                 if (x > rect.x
-                     && x < rect.x
-                     +. rect.w
-                     && y > rect.y
-                     && y < rect.y
-                     +. rect.h) {
-                   Js.log("intersection in:");
-                   let {x, y, w, h} = rect;
-                   Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j});
-                 },
-               flatLayout,
-             );
-
-             /* Js.log({j|x = $(x), y = $(y)|j}); */
-             ();
-           },
-           document,
-         );
-
-         /* highlight bounding boxes of glyphs and rules */
-         ctx->(Canvas2d.setFillStyle(String, "#FFFF00"));
-         List.iter(
-           rect => {
-             let {x, y, w, h} = rect;
-             /* Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j}); */
-             ctx |> Canvas2d.fillRect(~x, ~y, ~w, ~h);
-           },
-           flatLayout,
-         );
+       let update = () => {
+         /* clear canvas */
+         ctx->Canvas2d.setFillStyle(String, "#FFFFFF");
+         ctx |> Canvas2d.fillRect(~x=0., ~y=0., ~w=1000., ~h=600.);
 
          /* set styles */
-         ctx->(Canvas2d.setStrokeStyle(String, "magenta"));
-         ctx->(Canvas2d.setFillStyle(String, "#0000FF"));
-         ctx->(Canvas2d.lineWidth(1.));
+         ctx->Canvas2d.setFillStyle(String, "#000000");
 
+         let cursor = cursorForPath(cursorPath^, ast^);
+         let layout = typsetter.typeset(ast^);
          Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=0., ~y=height, ctx);
-         Renderer.render(ctx, (None, layout), metrics);
+         Canvas2dRe.translate(~x=100., ~y=300., ctx);
+         renderLayout(ctx, layout, cursor);
          Canvas2dRe.restore(ctx);
 
-         /**
-          * TODO:
-          * - when determining where to place the cursor, include the space around oeprators
-          */
-         let cursor = {index: 0};
-
-         let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
-         ctx->(Canvas2d.setFillStyle(String, "black"));
-         ctx |> Canvas2d.fillRect(~x, ~y, ~w=10., ~h);
-
-         Document.addKeyDownEventListener(
-           event => {
-             let key = KeyboardEvent.key(event);
-             switch (key) {
-             | "ArrowLeft" => cursor.index = max(0, cursor.index - 1)
-             | "ArrowRight" =>
-               cursor.index =
-                 min(List.length(flatLayout) - 1, cursor.index + 1)
-             | "0"
-             | "1"
-             | "2"
-             | "3"
-             | "4"
-             | "5"
-             | "6"
-             | "7"
-             | "8"
-             | "9" =>
-               let result =
-                 Transform.transform(
-                   (~path as _, node) =>
-                     if (node == Array.of_list(leafNodes^)[cursor.index]) {
-                       let (id, typ) = node;
-                       switch (typ) {
-                       | Number(value) => Some((id, Number(value ++ key)))
-                       | _ => Some(node)
-                       };
-                     } else {
-                       Some(node);
-                     },
-                   ast^,
-                 );
-               ast :=
-                 (
-                   switch (result) {
-                   | Some(newAst) => newAst
-                   | None => raise(UnhandledEditorError)
-                   }
-                 );
-             | "Backspace" =>
-               let result =
-                 Transform.transform(
-                   (~path as _, node) =>
-                     if (node == Array.of_list(leafNodes^)[cursor.index]) {
-                       let (id, typ) = node;
-                       switch (typ) {
-                       | Number(value) when String.length(value) > 0 =>
-                         Some((
-                           id,
-                           Number(
-                             String.sub(value, 0, String.length(value) - 1),
-                           ),
-                         ))
-                       | Number("") => None
-                       | _ => Some(node)
-                       };
-                     } else {
-                       Some(node);
-                     },
-                   ast^,
-                 );
-               ast :=
-                 (
-                   switch (result) {
-                   | Some(newAst) => newAst
-                   | None => raise(UnhandledEditorError)
-                   }
-                 );
-             | _ => ()
-             };
-
-             leafNodes := getLeafNodes(ast^);
-             let layout = Layout.hpackNat([typsetter.typeset(ast^)]);
-
-             /* TODO: update the canvas size if the layout dimensions change */
-
-             ctx
-             ->(
-                 Canvas2d.clearRect(~x=0., ~y=0., ~w=width, ~h=height +. depth)
-               );
-             ctx->(Canvas2d.setFillStyle(String, "#FFFF00"));
-             List.iter(
-               rect => {
-                 let {x, y, w, h} = rect;
-                 /* Js.log({j|x:$(x) y:$(y) w:$(w) h:$(h)|j}); */
-                 ctx |> Canvas2d.fillRect(~x, ~y, ~w, ~h);
-               },
-               flatLayout,
-             );
-
-             ctx->(Canvas2d.setStrokeStyle(String, "magenta"));
-             ctx->(Canvas2d.setFillStyle(String, "#0000FF"));
-             ctx->(Canvas2d.lineWidth(1.));
-
-             Canvas2dRe.save(ctx);
-             Canvas2dRe.translate(~x=0., ~y=height, ctx);
-             Renderer.render(ctx, (None, layout), metrics);
-             Canvas2dRe.restore(ctx);
-
-             let {x, y, h} = Array.of_list(flatLayout)[cursor.index];
-             ctx->(Canvas2d.setFillStyle(String, "black"));
-             ctx |> Canvas2d.fillRect(~x, ~y, ~w=10., ~h);
-
-             Js.log(key);
-           },
-           document,
-         );
+         Js.log(ast^);
+         Js.log(toJson(ast^));
        };
 
-       renderToCanvas("1.23 + 0.09");
+       update();
+       open Webapi.Dom;
+
+       Document.addKeyDownEventListener(
+         event => {
+           let key = KeyboardEvent.key(event);
+           processEvent(key, cursorPath, ast);
+           update();
+         },
+         document,
+       );
 
        resolve();
      })
 );
-/* let layout = CanvasRenderer.layout; */
-
-/* TODO: make sure font metrics are loaded */
-/* CanvasRenderer.renderToCanvas("1+x+x^2+x^3"); */
-
-Js.log("hello, world!");
