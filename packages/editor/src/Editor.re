@@ -8,7 +8,6 @@ open EditorTypsetter;
 open EditorRenderer;
 open Cursor;
 
-let ctx = CanvasRenderer.makeContext(1000, 600);
 let cursorPath = ref([0]);
 
 let ast =
@@ -330,6 +329,8 @@ let processEvent =
       )
   };
 
+let ctx = CanvasRenderer.makeContext(1600, 600);
+
 Js.Promise.(
   Fetch.fetch("/packages/typesetter/metrics/comic-sans.json")
   |> then_(Fetch.Response.json)
@@ -340,7 +341,7 @@ Js.Promise.(
        let update = () => {
          /* clear canvas */
          ctx->Canvas2d.setFillStyle(String, "#FFFFFF");
-         ctx |> Canvas2d.fillRect(~x=0., ~y=0., ~w=1000., ~h=600.);
+         ctx |> Canvas2d.fillRect(~x=0., ~y=0., ~w=1600., ~h=600.);
 
          /* set styles */
          ctx->Canvas2d.setFillStyle(String, "#000000");

@@ -25,7 +25,9 @@ let makeContext = (width: int, totalHeight: int) => {
   | _ => raise(NoDocument)
   };
 
-  CanvasElement.getContext2d(myCanvas);
+  let ctx = CanvasElement.getContext2d(myCanvas);
+  Canvas2dRe.scale(~x=2., ~y=2., ctx);
+  ctx;
 };
 
 type point = {
