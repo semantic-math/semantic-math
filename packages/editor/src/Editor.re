@@ -42,6 +42,13 @@ let rec insert_at = (n: int, x: 'a, l: list('a)) =>
   | [h, ...t] => n == 0 ? [x, h, ...t] : [h, ...insert_at(n - 1, x, t)]
   };
 
+let rec insert_many_at = (n: int, xs: list('a), l: list('a)) =>
+  switch (l) {
+  | [] => n == 0 ? xs : []
+  | [h, ...t] =>
+    n == 0 ? xs @ [h, ...t] : [h, ...insert_many_at(n - 1, xs, t)]
+  };
+
 let insertIntoTree = (ast, path, index, newNode) => {
   let newAst =
     switch (nodeForPath(path, ast)) {
@@ -65,6 +72,41 @@ let insertIntoTree = (ast, path, index, newNode) => {
   };
 };
 
+let insertManyIntoTree = (ast, path, index, newNodes) => {
+  let newAst =
+    switch (nodeForPath(path, ast)) {
+    | Some(pathNode) =>
+      transform(
+        node =>
+          node == pathNode ?
+            switch (pathNode) {
+            | Box(id, kind, children) =>
+              Some(Box(id, kind, insert_many_at(index, newNodes, children)))
+            | Glyph(_, _) => raise(Unhandled)
+            } :
+            Some(node),
+        ast,
+      )
+    | None => raise(Unhandled)
+    };
+  switch (newAst) {
+  | Some(node) => node
+  | _ => raise(Unhandled)
+  };
+};
+
+let removeNode = (nodeToRemove, ast) => {
+  let newAst =
+    transform(
+      node => node == nodeToRemove ? None : Some(node),
+      ast,
+    );
+  switch (newAst) {
+  | Some(node) => node
+  | _ => raise(Unhandled)
+  }
+};
+
 exception NoNodeForPath;
 
 type cursor_path = list(int);
@@ -82,11 +124,25 @@ let processEvent =
         switch (cursorPath^) {
         | [] => []
         | [top, ...parentPath] =>
-          /* TODO: insert all nodes from the current box in the parent
-             at the location of the current box within the parent's children
-             list */
           if (top == 0) {
-            cursorPath^;
+            let cursor = cursorForPath(cursorPath^, ast^);
+            let parentNode =
+              switch (nodeForPath(parentPath, ast^)) {
+              | Some(node) => node
+              | None => raise(NoNodeForPath)
+              };
+            if (cursor.left == None && cursor.right == None) {
+              /* The container is empty so let's delete it. */
+              ast := removeNode(parentNode, ast^);
+              parentPath;
+            } else {
+              /* If there are some child nodes, move them into the parent. */
+              let Box(_, _, children) = parentNode;
+              let [parent, ...grandparentPath] = parentPath;
+              ast := removeNode(parentNode, ast^);
+              ast := insertManyIntoTree(ast^, grandparentPath, parent, children);
+              parentPath;
+            };
           } else {
             let newCursorPath = [top - 1] @ parentPath;
             let cursorNode =
@@ -94,18 +150,7 @@ let processEvent =
               | Some(node) => node
               | None => raise(NoNodeForPath)
               };
-            let newAst =
-              transform(
-                node => node == cursorNode ? None : Some(node),
-                ast^,
-              );
-            ast :=
-              (
-                switch (newAst) {
-                | Some(node) => node
-                | _ => raise(Unhandled)
-                }
-              );
+            ast := removeNode(cursorNode, ast^);
             newCursorPath;
           }
         }
@@ -133,11 +178,11 @@ let processEvent =
                   | Some(Box(_, _, children)) =>
                     [List.length(children), 0] @ grandparentPath
                   | _ => raise(NoNodeForPath)
-                  };
+                  }
 
                 /* navigate out of child to parent */
                 | _ => parentPath
-                };
+                }
               };
             } else {
               switch (nodeForPath([top - 1] @ parentPath, ast^)) {
@@ -165,7 +210,7 @@ let processEvent =
               };
             }
           | _ => raise(NoNodeForPath) /* Glyphs don't have children */
-          };
+          }
         }
       )
   | "ArrowRight" =>
