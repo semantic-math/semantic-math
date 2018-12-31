@@ -338,6 +338,9 @@ Js.Promise.(
        let metrics = Metrics.make(json);
        let typsetter = makeTypesetter(metrics);
 
+       let treeTypesetter = TreeTypesetter.makeTypesetter(metrics);
+       let treeLayout = treeTypesetter.typeset(Tree.tree);
+
        let update = () => {
          /* clear canvas */
          ctx->Canvas2d.setFillStyle(String, "#FFFFFF");
@@ -351,6 +354,11 @@ Js.Promise.(
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=100., ~y=300., ctx);
          renderLayout(ctx, layout, cursor);
+         Canvas2dRe.restore(ctx);
+
+         Canvas2dRe.save(ctx);
+         Canvas2dRe.translate(~x=100., ~y=100., ctx);
+         renderLayout(ctx, treeLayout, cursor);
          Canvas2dRe.restore(ctx);
 
          Js.log(ast^);
