@@ -21,6 +21,10 @@
     {
       "dir": "packages/editor/src",
       "subdirs": true
+    },
+    {
+      "dir": "packages/editor/__tests__",
+      "type": "dev"
     }
   ],
   "package-specs": {
