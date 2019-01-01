@@ -2,7 +2,7 @@
 Js.log("NewEditor");
 
 open Webapi.Canvas;
-/* open UniqueId; */
+open UniqueId;
 /* open EditorNode; */
 /* open EditorTypsetter; */
 open EditorRenderer;
@@ -31,63 +31,84 @@ let rec insert_many_at = (n: int, xs: list('a), l: list('a)) =>
   };
 
 /* let insertIntoTree = (ast, path, index, newNode) => {
-  let newAst =
-    switch (nodeForPath(path, ast)) {
-    | Some(pathNode) =>
-      transform(
-        node =>
-          node == pathNode ?
-            switch (pathNode) {
-            | Box(id, kind, children) =>
-              Some(Box(id, kind, insert_at(index, newNode, children)))
-            | Glyph(_, _) => raise(Unhandled)
-            } :
-            Some(node),
-        ast,
-      )
-    | None => raise(Unhandled)
-    };
-  switch (newAst) {
-  | Some(node) => node
-  | _ => raise(Unhandled)
-  };
-};
+     let newAst =
+       switch (nodeForPath(path, ast)) {
+       | Some(pathNode) =>
+         transform(
+           node =>
+             node == pathNode ?
+               switch (pathNode) {
+               | Box(id, kind, children) =>
+                 Some(Box(id, kind, insert_at(index, newNode, children)))
+               | Glyph(_, _) => raise(Unhandled)
+               } :
+               Some(node),
+           ast,
+         )
+       | None => raise(Unhandled)
+       };
+     switch (newAst) {
+     | Some(node) => node
+     | _ => raise(Unhandled)
+     };
+   };
 
-let insertManyIntoTree = (ast, path, index, newNodes) => {
-  let newAst =
-    switch (nodeForPath(path, ast)) {
-    | Some(pathNode) =>
-      transform(
-        node =>
-          node == pathNode ?
-            switch (pathNode) {
-            | Box(id, kind, children) =>
-              Some(Box(id, kind, insert_many_at(index, newNodes, children)))
-            | Glyph(_, _) => raise(Unhandled)
-            } :
-            Some(node),
-        ast,
-      )
-    | None => raise(Unhandled)
-    };
-  switch (newAst) {
-  | Some(node) => node
-  | _ => raise(Unhandled)
-  };
-};
+   let insertManyIntoTree = (ast, path, index, newNodes) => {
+     let newAst =
+       switch (nodeForPath(path, ast)) {
+       | Some(pathNode) =>
+         transform(
+           node =>
+             node == pathNode ?
+               switch (pathNode) {
+               | Box(id, kind, children) =>
+                 Some(Box(id, kind, insert_many_at(index, newNodes, children)))
+               | Glyph(_, _) => raise(Unhandled)
+               } :
+               Some(node),
+           ast,
+         )
+       | None => raise(Unhandled)
+       };
+     switch (newAst) {
+     | Some(node) => node
+     | _ => raise(Unhandled)
+     };
+   };
 
-let removeNode = (nodeToRemove, ast) => {
-  let newAst =
-    transform(node => node == nodeToRemove ? None : Some(node), ast);
-  switch (newAst) {
-  | Some(node) => node
-  | _ => raise(Unhandled)
-  };
-}; */
+   let removeNode = (nodeToRemove, ast) => {
+     let newAst =
+       transform(node => node == nodeToRemove ? None : Some(node), ast);
+     switch (newAst) {
+     | Some(node) => node
+     | _ => raise(Unhandled)
+     };
+   }; */
 
 exception NoNodeForPath;
+exception No_Children;
 
 type cursor_path = list(int);
+
+let rec firstChild = (tn: tree_node): option(LinkedList.node(tree_node)) =>
+  switch (tn) {
+  | (_, Frac({num})) => firstChild(num.value)
+  | (_, Parens({children})) => children.head
+  | (_, SupSub({sub: Some(sub)})) => sub.head
+  | (_, SupSub({sup: Some(sup)})) => sup.head
+  | (_, Row({children})) => children.head
+  | _ => raise(No_Children)
+  };
+
+let rec lastChild = (tn: tree_node): option(LinkedList.node(tree_node)) =>
+  switch (tn) {
+  | (_, Frac({den})) => lastChild(den.value)
+  | (_, Parens({children})) => children.tail
+  | (_, SupSub({sub: Some(sub)})) => sub.tail
+  | (_, SupSub({sup: Some(sup)})) => sup.tail
+  | (_, Row({children})) => children.tail
+  | _ => raise(No_Children)
+  };
 
 let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
   switch (key) {
@@ -95,7 +116,26 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
   | "Shift"
   | "Alt"
   | "Control" => ignore()
-  | "Backspace" => ignore()
+  | "Backspace" =>
+    let parent = cursor^.parent;
+    switch (cursor^.prev) {
+    | Some(node) =>
+      switch (parent) {
+      | {value: (_, Row({children}))} =>
+        LinkedList.remove_node(node, children)
+      | _ => ()
+      }
+    | _ => ()
+    };
+    let prev = switch(cursor^.prev) {
+    | Some(node) => node.prev
+    | None => None;
+    };
+    cursor := {
+      next: cursor^.next,
+      prev: prev,
+      parent: cursor^.parent,
+    };
   | "ArrowLeft" =>
     cursor :=
       (
@@ -116,27 +156,7 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
               }
             | _ => raise(Invalid_Tree)
             }
-          | (_, Parens({children})) => {
-              prev: children.tail,
-              next: None,
-              parent: node,
-            }
-          | (_, SupSub({sub: Some(sub)})) => {
-              prev: sub.tail,
-              next: None,
-              parent: node,
-            }
-          | (_, SupSub({sup: Some(sup)})) => {
-              prev: sup.tail,
-              next: None,
-              parent: node,
-            }
-          | (_, Row({children})) => {
-              prev: children.tail,
-              next: None,
-              parent: node,
-            }
-          | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
+          | _ => {prev: lastChild(node.value), next: None, parent: node}
           }
         | None =>
           let node = cursor^.parent;
@@ -189,27 +209,7 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
               }
             | _ => raise(Invalid_Tree)
             }
-          | (_, Parens({children})) => {
-              prev: None,
-              next: children.head,
-              parent: node,
-            }
-          | (_, SupSub({sub: Some(sub)})) => {
-              prev: None,
-              next: sub.head,
-              parent: node,
-            }
-          | (_, SupSub({sup: Some(sup)})) => {
-              prev: None,
-              next: sup.head,
-              parent: node,
-            }
-          | (_, Row({children})) => {
-              prev: None,
-              next: children.head,
-              parent: node,
-            }
-          | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
+          | _ => {prev: None, next: firstChild(node.value), parent: node}
           }
         | None =>
           let node = cursor^.parent;
@@ -248,7 +248,38 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
   | "(" => ignore()
   | _ =>
     let c = key.[0];
-    ignore();
+    let glyph = (genId(), Glyph({char: c}));
+    let parent = cursor^.parent;
+    switch (parent) {
+    | {value: (_, Row({children}))} =>
+      switch (cursor^.prev) {
+      | Some(prev) =>
+        LinkedList.insert_after_node(
+          ~parent=Some(parent),
+          prev,
+          glyph,
+          children,
+        )
+      | _ => LinkedList.push_head(~parent=Some(parent), glyph, children)
+      };
+      cursor :=
+        (
+          switch (cursor^) {
+          | {next: Some(node)} => {
+              prev: node.prev,
+              next: Some(node),
+              parent: cursor^.parent,
+            }
+          | {prev: Some(node)} => {
+              prev: node.next,
+              next: None,
+              parent: cursor^.parent,
+            }
+          | _ => raise(Unhandled) /* TODO: handle this case */
+          }
+        );
+    | _ => ()
+    };
   };
 
 let ctx = CanvasRenderer.makeContext(1600, 600);
@@ -261,9 +292,10 @@ Js.Promise.(
        let metrics = Metrics.make(json);
 
        let treeTypesetter = TreeTypesetter.makeTypesetter(metrics);
-       let treeLayout = treeTypesetter.typeset(Tree.tree);
 
        let update = () => {
+         let treeLayout = treeTypesetter.typeset(Tree.tree);
+
          /* clear canvas */
          ctx->Canvas2d.setFillStyle(String, "#FFFFFF");
          ctx |> Canvas2d.fillRect(~x=0., ~y=0., ~w=1600., ~h=600.);

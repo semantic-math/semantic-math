@@ -48,12 +48,13 @@ let push_head = (~parent=None, value: 'a, l: linked_list('a)) =>
   };
 
 let iteri = (f: (int, 'a) => unit, l: linked_list('a)) => {
-  let rec next = (i: int, x: option(node('a))) => {
+  let rec next = (i: int, x: option(node('a))) =>
     switch (x) {
-    | Some(node) => f(i, node.value); next(i + 1, node.next);
-    | None => ();
-    }
-  };
+    | Some(node) =>
+      f(i, node.value);
+      next(i + 1, node.next);
+    | None => ()
+    };
   next(0, l.head);
 };
 
@@ -69,28 +70,31 @@ let iter = (f: 'a => unit, l: linked_list('a)) =>
   iteri((_, x) => f(x), l);
 
 let iteri_nodes = (f: (int, node('a)) => unit, l: linked_list('a)) => {
-  let rec next = (i: int, x: option(node('a))) => {
+  let rec next = (i: int, x: option(node('a))) =>
     switch (x) {
-    | Some(node) => f(i, node); next(i + 1, node.next);
-    | None => ();
-    }
-  };
+    | Some(node) =>
+      f(i, node);
+      next(i + 1, node.next);
+    | None => ()
+    };
   next(0, l.head);
 };
 
-let fold_nodes_lefti = (f: ('b, int, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b => {
+let fold_nodes_lefti =
+    (f: ('b, int, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b => {
   let accu = ref(accu);
   iteri_nodes((i, x) => accu := f(accu^, i, x), l);
   accu^;
 };
 
-let iter_nodes = (f: node('a) => unit, l: linked_list('a)) => 
+let iter_nodes = (f: node('a) => unit, l: linked_list('a)) =>
   iteri_nodes((_, x) => f(x), l);
 
-let fold_left = (f: ('b, 'a) => 'b, accu: 'b, l: linked_list('a)): 'b => 
+let fold_left = (f: ('b, 'a) => 'b, accu: 'b, l: linked_list('a)): 'b =>
   fold_lefti((accu, _, x) => f(accu, x), accu, l);
 
-let fold_nodes_left = (f: ('b, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b => 
+let fold_nodes_left =
+    (f: ('b, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b =>
   fold_nodes_lefti((accu, _, x) => f(accu, x), accu, l);
 
 let to_list = (l: linked_list('a)): list('a) =>
@@ -116,15 +120,15 @@ let nth_node = (index: int, l: linked_list('a)) => {
   let i = ref(0);
   let result = ref(None);
   while (switch (node^) {
-          | Some(x) =>
-            if (index == i^) {
-              result := Some(x);
-            };
-            node := x.next;
-            i := i^ + 1;
-            true;
-          | None => false
-          }) {
+         | Some(x) =>
+           if (index == i^) {
+             result := Some(x);
+           };
+           node := x.next;
+           i := i^ + 1;
+           true;
+         | None => false
+         }) {
     ();
   };
   switch (result^) {
@@ -136,19 +140,31 @@ let nth_node = (index: int, l: linked_list('a)) => {
 let contains_node = (n: node('a), l: linked_list('a)) =>
   fold_nodes_left((accu, x) => accu || x == n, false, l);
 
-let insert_after =
-    (~parent=None, index: int, value: 'a, l: linked_list('a)) => {
-  let node = nth_node(index, l);
+let insert_after_node =
+    (~parent=None, node: node('a), value: 'a, l: linked_list('a)) =>
   if (l.tail == Some(node)) {
     node.next = Some({value, prev: l.tail, next: None, parent});
     l.tail = node.next;
   } else {
     switch (node.next) {
     | Some(next) =>
-      node.next =
-        Some({value, prev: Some(node), next: Some(next), parent});
+      node.next = Some({value, prev: Some(node), next: Some(next), parent});
       next.prev = node.next;
     | _ => raise(Invalid_LinkedList)
     };
+  };
+
+let insert_after = (~parent=None, index: int, value: 'a, l: linked_list('a)) =>
+  insert_after_node(~parent, nth_node(index, l), value, l);
+
+let remove_node = (node: node('a), l: linked_list('a)) => {
+  /* TODO: check if node is in l */
+  switch (node.prev) {
+  | Some(prevNode) => prevNode.next = node.next
+  | _ => l.head = node.next
+  };
+  switch (node.next) {
+  | Some(nextNode) => nextNode.prev = node.prev
+  | _ => l.tail = node.prev
   };
 };
