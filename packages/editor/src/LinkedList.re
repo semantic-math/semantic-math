@@ -78,11 +78,20 @@ let iteri_nodes = (f: (int, node('a)) => unit, l: linked_list('a)) => {
   next(0, l.head);
 };
 
+let fold_nodes_lefti = (f: ('b, int, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b => {
+  let accu = ref(accu);
+  iteri_nodes((i, x) => accu := f(accu^, i, x), l);
+  accu^;
+};
+
 let iter_nodes = (f: node('a) => unit, l: linked_list('a)) => 
   iteri_nodes((_, x) => f(x), l);
 
 let fold_left = (f: ('b, 'a) => 'b, accu: 'b, l: linked_list('a)): 'b => 
   fold_lefti((accu, _, x) => f(accu, x), accu, l);
+
+let fold_nodes_left = (f: ('b, node('a)) => 'b, accu: 'b, l: linked_list('a)): 'b => 
+  fold_nodes_lefti((accu, _, x) => f(accu, x), accu, l);
 
 let to_list = (l: linked_list('a)): list('a) =>
   fold_left((accu, x) => accu @ [x], [], l);
@@ -123,6 +132,9 @@ let nth_node = (index: int, l: linked_list('a)) => {
   | None => raise(Not_Found)
   };
 };
+
+let contains_node = (n: node('a), l: linked_list('a)) =>
+  fold_nodes_left((accu, x) => accu || x == n, false, l);
 
 let insert_after =
     (~parent=None, index: int, value: 'a, l: linked_list('a)) => {

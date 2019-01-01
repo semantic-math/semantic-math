@@ -16,6 +16,7 @@ and supsub = {
   sup: option(linked_list(tree_node)),
   sub: option(linked_list(tree_node)),
 }
+/* we could solve this issue with polymorphic types */
 and frac = {
   num: node(tree_node),
   den: node(tree_node),
@@ -62,9 +63,14 @@ let den = {
   parent: None,
 };
 
+num.next = Some(den);
+den.prev = Some(num);
+
 LinkedList.push_tail((genId(), Frac({num, den})), children);
-LinkedList.iter_nodes(child => child.parent = children.tail, numChildren);
-LinkedList.iter_nodes(child => child.parent = children.tail, denChildren);
+LinkedList.iter_nodes(child => child.parent = Some(num), numChildren);
+LinkedList.iter_nodes(child => child.parent = Some(den), denChildren);
+num.parent = children.tail;
+den.parent = children.tail;
 
 LinkedList.push_tail((genId(), Glyph({char: '+'})), children);
 
@@ -82,6 +88,13 @@ LinkedList.push_tail((genId(), Glyph({char: '1'})), children);
 LinkedList.push_tail((genId(), Glyph({char: '0'})), children);
 
 let tree = (genId(), Row({children: children}));
+let treeNode = {
+    prev: None,
+    next: None,
+    parent: None,
+    value: tree,
+};
+LinkedList.iter_nodes(child => child.parent = Some(treeNode), children);
 
 type cursor('a) = {
   prev: option(LinkedList.node('a)),
