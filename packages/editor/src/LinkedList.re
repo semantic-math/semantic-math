@@ -38,12 +38,15 @@ let from_list = (~parent=None, l: list('a)): linked_list('a) =>
 let push_head = (~parent=None, value: 'a, l: linked_list('a)) =>
   switch (l) {
   | {head: Some(hd), tail: Some(_)} =>
-    hd.prev = Some({value, prev: None, next: Some(hd), parent});
+    let result = {value, prev: None, next: Some(hd), parent};
+    hd.prev = Some(result);
     l.head = hd.prev;
+    result;
   | {head: None, tail: None} =>
     let node = {value, prev: None, next: None, parent};
     l.head = Some(node);
     l.tail = Some(node);
+    node;
   | _ => raise(Invalid_LinkedList)
   };
 
@@ -143,13 +146,17 @@ let contains_node = (n: node('a), l: linked_list('a)) =>
 let insert_after_node =
     (~parent=None, node: node('a), value: 'a, l: linked_list('a)) =>
   if (l.tail == Some(node)) {
-    node.next = Some({value, prev: l.tail, next: None, parent});
+    let result = {value, prev: l.tail, next: None, parent}
+    node.next = Some(result);
     l.tail = node.next;
+    result;
   } else {
     switch (node.next) {
     | Some(next) =>
-      node.next = Some({value, prev: Some(node), next: Some(next), parent});
+      let result = {value, prev: Some(node), next: Some(next), parent};
+      node.next = Some(result);
       next.prev = node.next;
+      result;
     | _ => raise(Invalid_LinkedList)
     };
   };

@@ -19,8 +19,8 @@ let rec firstChild = (tn: tree_node): option(LinkedList.node(tree_node)) =>
   switch (tn) {
   | (_, Frac({num})) => firstChild(num.value)
   | (_, Parens({children})) => children.head
-  | (_, SupSub({sub: Some(sub)})) => sub.head
-  | (_, SupSub({sup: Some(sup)})) => sup.head
+  | (_, SupSub({sub: Some(sub)})) => firstChild(sub.value)
+  | (_, SupSub({sup: Some(sup)})) => firstChild(sup.value)
   | (_, Row({children})) => children.head
   | _ => raise(No_Children)
   };
@@ -29,8 +29,8 @@ let rec lastChild = (tn: tree_node): option(LinkedList.node(tree_node)) =>
   switch (tn) {
   | (_, Frac({den})) => lastChild(den.value)
   | (_, Parens({children})) => children.tail
-  | (_, SupSub({sub: Some(sub)})) => sub.tail
-  | (_, SupSub({sup: Some(sup)})) => sup.tail
+  | (_, SupSub({sub: Some(sub)})) => firstChild(sub.value)
+  | (_, SupSub({sup: Some(sup)})) => firstChild(sup.value)
   | (_, Row({children})) => children.tail
   | _ => raise(No_Children)
   };
@@ -79,6 +79,15 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
               }
             | _ => raise(Invalid_Tree)
             }
+          | (_, SupSub({sup: Some(sup)})) =>
+            switch (sup.value) {
+            | (_, Row({children})) => {
+                prev: children.tail,
+                next: None,
+                parent: sup,
+              }
+            | _ => raise(Invalid_Tree)
+            }
           | _ => {prev: lastChild(node.value), next: None, parent: node}
           }
         | None =>
@@ -106,6 +115,15 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
                 | _ => raise(Invalid_Tree)
                 };
               }
+            | (_, SupSub({sup: Some(sup)})) =>
+              switch (parent.parent) {
+              | Some(grandparent) => {
+                  prev: parent.prev,
+                  next: Some(parent),
+                  parent: grandparent,
+                }
+              | _ => {prev: Some(node), next: node.next, parent}
+              }
             | _ => {prev: node.prev, next: Some(node), parent}
             }
           | _ => cursor^ /* start of tree */
@@ -129,6 +147,15 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
                 prev: None,
                 next: children.head,
                 parent: num,
+              }
+            | _ => raise(Invalid_Tree)
+            }
+          | (_, SupSub({sup: Some(sup)})) =>
+            switch (sup.value) {
+            | (_, Row({children})) => {
+                prev: None,
+                next: children.head,
+                parent: sup,
               }
             | _ => raise(Invalid_Tree)
             }
@@ -159,13 +186,48 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
                 | _ => raise(Invalid_Tree)
                 };
               }
+            | (_, SupSub({sup: Some(sup)})) =>
+              switch (parent.parent) {
+              | Some(grandparent) => {
+                  prev: Some(parent),
+                  next: parent.next,
+                  parent: grandparent,
+                }
+              | _ => {prev: Some(node), next: node.next, parent}
+              }
             | _ => {prev: Some(node), next: node.next, parent}
             }
           | _ => cursor^ /* end of tree */
           };
         }
       )
-  | "^" => ignore()
+  | "^" =>
+    let parent = cursor^.parent;
+    switch (parent) {
+    | {value: (_, Row({children}))} 
+    | {value: (_, Parens({children}))} =>
+      let supNode = {
+        LinkedList.prev: None,
+        LinkedList.next: None,
+        LinkedList.parent: None,
+        LinkedList.value: (genId(), Row({children: LinkedList.create()})),
+      };
+      let sup = (genId(), SupSub({sup: Some(supNode), sub: None}));
+      let newNode =
+        switch (cursor^.prev) {
+        | Some(prev) =>
+          LinkedList.insert_after_node(
+            ~parent=Some(parent),
+            prev,
+            sup,
+            children,
+          )
+        | _ => LinkedList.push_head(~parent=Some(parent), sup, children)
+        };
+      supNode.parent = Some(newNode);
+      cursor := {prev: None, next: None, parent: supNode};
+    | _ => ()
+    };
   | "_" => ignore()
   | "/" => ignore()
   | "(" => ignore()
@@ -176,16 +238,19 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
     switch (parent) {
     | {value: (_, Row({children}))}
     | {value: (_, Parens({children}))} =>
-      switch (cursor^.prev) {
-      | Some(prev) =>
-        LinkedList.insert_after_node(
-          ~parent=Some(parent),
-          prev,
-          glyph,
-          children,
-        )
-      | _ => LinkedList.push_head(~parent=Some(parent), glyph, children)
-      };
+      (
+        switch (cursor^.prev) {
+        | Some(prev) =>
+          LinkedList.insert_after_node(
+            ~parent=Some(parent),
+            prev,
+            glyph,
+            children,
+          )
+        | _ => LinkedList.push_head(~parent=Some(parent), glyph, children)
+        }
+      )
+      |> ignore;
       cursor :=
         (
           switch (cursor^) {
@@ -199,7 +264,7 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
               next: None,
               parent: cursor^.parent,
             }
-          | _ => raise(Unhandled) /* TODO: handle this case */
+          | _ => {prev: children.tail, next: None, parent: cursor^.parent}
           }
         );
     | _ => ()

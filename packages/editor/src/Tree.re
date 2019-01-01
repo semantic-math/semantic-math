@@ -3,18 +3,12 @@ open UniqueId;
 
 exception Invalid_Tree;
 
-type glyph = {
-  char,
-}
-and row = {
-  children: linked_list(tree_node),
-}
-and parens = {
-  children: linked_list(tree_node),
-}
+type glyph = {char}
+and row = {children: linked_list(tree_node)}
+and parens = {children: linked_list(tree_node)}
 and supsub = {
-  sup: option(linked_list(tree_node)),
-  sub: option(linked_list(tree_node)),
+  sup: option(node(tree_node)),
+  sub: option(node(tree_node)),
 }
 /* we could solve this issue with polymorphic types */
 and frac = {
@@ -33,12 +27,15 @@ let children = LinkedList.create();
 LinkedList.push_tail((genId(), Glyph({char: '2'})), children);
 LinkedList.push_tail((genId(), Glyph({char: 'x'})), children);
 
-let sup = LinkedList.from_list([(genId(), Glyph({char: '2'}))]);
+let supChildren = LinkedList.from_list([(genId(), Glyph({char: '2'}))]);
+let sup = (genId(), Row({children: supChildren}));
+let supNode = {value: sup, prev: None, next: None, parent: None};
 LinkedList.push_tail(
-  (genId(), SupSub({sup: Some(sup), sub: None})),
+  (genId(), SupSub({sup: Some(supNode), sub: None})),
   children,
 );
-LinkedList.iter_nodes(child => child.parent = children.tail, sup);
+supNode.parent = children.tail;
+LinkedList.iter_nodes(child => child.parent = children.tail, supChildren);
 
 LinkedList.push_tail((genId(), Glyph({char: '+'})), children);
 
@@ -88,12 +85,7 @@ LinkedList.push_tail((genId(), Glyph({char: '1'})), children);
 LinkedList.push_tail((genId(), Glyph({char: '0'})), children);
 
 let tree = (genId(), Row({children: children}));
-let treeNode = {
-    prev: None,
-    next: None,
-    parent: None,
-    value: tree,
-};
+let treeNode = {prev: None, next: None, parent: None, value: tree};
 LinkedList.iter_nodes(child => child.parent = Some(treeNode), children);
 
 type cursor('a) = {
@@ -121,16 +113,48 @@ let moveLeft = (cursor: tree_cursor) =>
   switch (cursor.prev) {
   | Some(node) =>
     switch (node.value) {
-    | (_, Glyph(_)) => {prev: node.prev, next: Some(node), parent: cursor.parent}
+    | (_, Glyph(_)) => {
+        prev: node.prev,
+        next: Some(node),
+        parent: cursor.parent,
+      }
     | (_, Frac({den})) =>
       switch (den.value) {
-      | (_, Row({children})) => {prev: children.tail, next: None, parent: den}
+      | (_, Row({children})) => {
+          prev: children.tail,
+          next: None,
+          parent: den,
+        }
       | _ => raise(Invalid_Tree)
       }
-    | (_, Parens({children})) => {prev: children.tail, next: None, parent: node}
-    | (_, SupSub({sub: Some(sub)})) => {prev: sub.tail, next: None, parent: node}
-    | (_, SupSub({sup: Some(sup)})) => {prev: sup.tail, next: None, parent: node}
-    | (_, Row({children})) => {prev: children.tail, next: None, parent: node}
+    | (_, Parens({children})) => {
+        prev: children.tail,
+        next: None,
+        parent: node,
+      }
+    | (_, SupSub({sub: Some(sub)})) =>
+      switch (sub.value) {
+      | (_, Row({children})) => {
+          prev: children.tail,
+          next: None,
+          parent: sub,
+        }
+      | _ => raise(Invalid_Tree)
+      }
+    | (_, SupSub({sup: Some(sup)})) =>
+      switch (sup.value) {
+      | (_, Row({children})) => {
+          prev: children.tail,
+          next: None,
+          parent: sup,
+        }
+      | _ => raise(Invalid_Tree)
+      }
+    | (_, Row({children})) => {
+        prev: children.tail,
+        next: None,
+        parent: node,
+      }
     | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
     }
   | None =>
