@@ -1,5 +1,5 @@
 open Webapi.Canvas;
-open Cursor;
+open Tree;
 open EditorNode;
 
 type point = {
@@ -17,12 +17,6 @@ switch (axis) {
 };
 
 exception NotFound;
-
-let idForNode = node =>
-  switch (node) {
-  | Box(id, _, _) => id
-  | Glyph(id, _) => id
-  };
 
 let rec indexOf = (x, lst, c) =>
   switch (lst) {
@@ -44,27 +38,32 @@ let drawChar = (ctx, pen, c, fontSize) => {
   ctx |> Canvas2d.fillText(String.make(1, c), ~x=pen.x, ~y=pen.y);
 };
 
+let idForNode = (node: tree_node): int => 
+  switch (node) {
+  | (id, _) => id
+  };
+
 let rec renderLayout =
         (
           ctx: Webapi.Canvas.Canvas2d.t,
           layout: EditorLayout.node,
-          cursor: cursor,
+          cursor: tree_cursor,
         ) => {
   let pen = {x: 0., y: 0.};
 
   /* render cursor */
   switch (layout) {
   | (Some(id), _) =>
-    switch (cursor.right) {
+    switch (cursor.next) {
     | Some(node) =>
-      let cursorId = idForNode(node);
+      let cursorId = idForNode(node.value);
       if (cursorId == id) {
         drawCursor(ctx, pen, 60.);
       };
     | _ =>
-      switch (cursor.left) {
+      switch (cursor.prev) {
       | Some(node) =>
-        let cursorId = idForNode(node);
+        let cursorId = idForNode(node.value);
         if (cursorId == id) {
           let pen = {x: pen.x +. EditorLayout.width(layout), y: pen.y};
           drawCursor(ctx, pen, 60.);
@@ -84,13 +83,12 @@ let rec renderLayout =
 
       let cursorIndex: int =
         switch (cursor) {
-        | {left: None, right: None, parent} =>
+        | {prev: None, next: None, parent} =>
           switch (id) {
-          | Some(id) when id == idForNode(parent) =>
-            switch (parent) {
-            | Box(_, Parens, _) => 1
-            | Box(_, Sup, _) => 0
-            | Box(_, Sub, _) => 0
+          | Some(id) when id == idForNode(parent.value) =>
+            switch (parent.value) {
+            | (_, Parens(_)) => 1
+            | (_, SupSub(_)) => 0
             | _ => (-1)
             }
           | _ => (-1)

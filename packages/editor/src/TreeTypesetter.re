@@ -5,7 +5,7 @@ type typesetter = {typeset: tree_node => EditorLayout.node};
 let makeTypesetter = (metrics: Metrics.metrics) => {
   let rec typeset = (~fontScale=1.0, ast: tree_node): EditorLayout.node =>
     switch (ast) {
-    | Row({children}) =>
+    | (id, Row({children})) =>
       let children = LinkedList.to_list(children);
       let box =
         EditorLayout.hpackNat(List.map(typeset(~fontScale), children));
@@ -13,7 +13,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
       let minAscent = metrics.getCharAscent('1', size);
       let minDescent = metrics.getCharDescent('y', size);
       (
-        None,
+        Some(id),
         EditorLayout.Box(
           0.,
           {
@@ -25,7 +25,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
           },
         ),
       );
-    | SupSub({sup: Some(sup)}) =>
+    | (id, SupSub({sup: Some(sup)})) =>
       let originalFontScale = fontScale;
       let fontScale = fontScale == 1. ? 0.7 : 0.5;
       let children = LinkedList.to_list(sup);
@@ -35,7 +35,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
       let minAscent = metrics.getCharAscent('1', size);
       let minDescent = metrics.getCharDescent('y', size);
       (
-        None,
+        Some(id),
         EditorLayout.Box(
           originalFontScale *. 24.,
           {
@@ -47,7 +47,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
           },
         ),
       );
-    | Frac({num, den}) =>
+    | (id, Frac({num, den})) =>
       let originalFontScale = fontScale;
       let fontScale = fontScale == 1.0 ? 1.0 : 0.5;
       let numLayout = typeset(~fontScale, num.value);
@@ -87,7 +87,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
       let descent = 2. +. 8. +. EditorLayout.vheight(denLayout);
 
       (
-        None,
+        Some(id),
         EditorLayout.Box(
           originalFontScale *. 19.,
           {
@@ -99,7 +99,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
           },
         ),
       );
-    | Parens({children}) =>
+    | (id, Parens({children})) =>
       let children =
         List.map(typeset(~fontScale), LinkedList.to_list(children));
       let childrenWithParens =
@@ -112,7 +112,7 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
       let minAscent = metrics.getCharAscent('1', size);
       let minDescent = metrics.getCharDescent('y', size);
       (
-        None,
+        Some(id),
         EditorLayout.Box(
           0.,
           {
@@ -124,9 +124,9 @@ let makeTypesetter = (metrics: Metrics.metrics) => {
           },
         ),
       );
-    | Glyph({char: c}) =>
+    | (id, Glyph({char: c})) =>
       let c = c == '*' ? Js.String.fromCharCode(183).[0] : c;
-      (None, EditorLayout.Glyph(c, fontScale *. 60., metrics));
+      (Some(id), EditorLayout.Glyph(c, fontScale *. 60., metrics));
     | _ => (None, EditorLayout.Kern(0.))
     };
 

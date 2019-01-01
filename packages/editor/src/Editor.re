@@ -7,6 +7,7 @@ open EditorNode;
 open EditorTypsetter;
 open EditorRenderer;
 open Cursor;
+open Tree;
 
 let cursorPath = ref([0]);
 
@@ -336,7 +337,6 @@ Js.Promise.(
   |> then_(Fetch.Response.json)
   |> then_(json => {
        let metrics = Metrics.make(json);
-       let typsetter = makeTypesetter(metrics);
 
        let treeTypesetter = TreeTypesetter.makeTypesetter(metrics);
        let treeLayout = treeTypesetter.typeset(Tree.tree);
@@ -349,16 +349,9 @@ Js.Promise.(
          /* set styles */
          ctx->Canvas2d.setFillStyle(String, "#000000");
 
-         let cursor = cursorForPath(cursorPath^, ast^);
-         let layout = typsetter.typeset(ast^);
          Canvas2dRe.save(ctx);
          Canvas2dRe.translate(~x=100., ~y=300., ctx);
-         renderLayout(ctx, layout, cursor);
-         Canvas2dRe.restore(ctx);
-
-         Canvas2dRe.save(ctx);
-         Canvas2dRe.translate(~x=100., ~y=100., ctx);
-         renderLayout(ctx, treeLayout, cursor);
+         renderLayout(ctx, treeLayout, Tree.cursor);
          Canvas2dRe.restore(ctx);
 
          Js.log(ast^);
