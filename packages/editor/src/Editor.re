@@ -10,81 +10,6 @@ open EditorRenderer;
 open Tree;
 
 exception Unhandled;
-
-let rec remove_at = (n: int, l: list('a)) =>
-  switch (l) {
-  | [] => []
-  | [h, ...t] => n == 0 ? t : [h, ...remove_at(n - 1, t)]
-  };
-
-let rec insert_at = (n: int, x: 'a, l: list('a)) =>
-  switch (l) {
-  | [] => n == 0 ? [x] : []
-  | [h, ...t] => n == 0 ? [x, h, ...t] : [h, ...insert_at(n - 1, x, t)]
-  };
-
-let rec insert_many_at = (n: int, xs: list('a), l: list('a)) =>
-  switch (l) {
-  | [] => n == 0 ? xs : []
-  | [h, ...t] =>
-    n == 0 ? xs @ [h, ...t] : [h, ...insert_many_at(n - 1, xs, t)]
-  };
-
-/* let insertIntoTree = (ast, path, index, newNode) => {
-     let newAst =
-       switch (nodeForPath(path, ast)) {
-       | Some(pathNode) =>
-         transform(
-           node =>
-             node == pathNode ?
-               switch (pathNode) {
-               | Box(id, kind, children) =>
-                 Some(Box(id, kind, insert_at(index, newNode, children)))
-               | Glyph(_, _) => raise(Unhandled)
-               } :
-               Some(node),
-           ast,
-         )
-       | None => raise(Unhandled)
-       };
-     switch (newAst) {
-     | Some(node) => node
-     | _ => raise(Unhandled)
-     };
-   };
-
-   let insertManyIntoTree = (ast, path, index, newNodes) => {
-     let newAst =
-       switch (nodeForPath(path, ast)) {
-       | Some(pathNode) =>
-         transform(
-           node =>
-             node == pathNode ?
-               switch (pathNode) {
-               | Box(id, kind, children) =>
-                 Some(Box(id, kind, insert_many_at(index, newNodes, children)))
-               | Glyph(_, _) => raise(Unhandled)
-               } :
-               Some(node),
-           ast,
-         )
-       | None => raise(Unhandled)
-       };
-     switch (newAst) {
-     | Some(node) => node
-     | _ => raise(Unhandled)
-     };
-   };
-
-   let removeNode = (nodeToRemove, ast) => {
-     let newAst =
-       transform(node => node == nodeToRemove ? None : Some(node), ast);
-     switch (newAst) {
-     | Some(node) => node
-     | _ => raise(Unhandled)
-     };
-   }; */
-
 exception NoNodeForPath;
 exception No_Children;
 
@@ -121,21 +46,19 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
     switch (cursor^.prev) {
     | Some(node) =>
       switch (parent) {
-      | {value: (_, Row({children}))} =>
+      | {value: (_, Row({children}))}
+      | {value: (_, Parens({children}))} =>
         LinkedList.remove_node(node, children)
       | _ => ()
       }
     | _ => ()
     };
-    let prev = switch(cursor^.prev) {
-    | Some(node) => node.prev
-    | None => None;
-    };
-    cursor := {
-      next: cursor^.next,
-      prev: prev,
-      parent: cursor^.parent,
-    };
+    let prev =
+      switch (cursor^.prev) {
+      | Some(node) => node.prev
+      | None => None
+      };
+    cursor := {next: cursor^.next, prev, parent: cursor^.parent};
   | "ArrowLeft" =>
     cursor :=
       (
@@ -251,7 +174,8 @@ let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
     let glyph = (genId(), Glyph({char: c}));
     let parent = cursor^.parent;
     switch (parent) {
-    | {value: (_, Row({children}))} =>
+    | {value: (_, Row({children}))}
+    | {value: (_, Parens({children}))} =>
       switch (cursor^.prev) {
       | Some(prev) =>
         LinkedList.insert_after_node(
