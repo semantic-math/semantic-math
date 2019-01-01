@@ -2,31 +2,12 @@
 Js.log("NewEditor");
 
 open Webapi.Canvas;
-open UniqueId;
-open EditorNode;
-open EditorTypsetter;
+/* open UniqueId; */
+/* open EditorNode; */
+/* open EditorTypsetter; */
 open EditorRenderer;
-open Cursor;
+/* open Cursor; */
 open Tree;
-
-let cursorPath = ref([0]);
-
-let ast =
-  ref(
-    Box(
-      genId(),
-      Row,
-      [
-        Glyph(genId(), '2'),
-        Glyph(genId(), 'x'),
-        Glyph(genId(), '+'),
-        Glyph(genId(), '5'),
-        Glyph(genId(), '='),
-        Glyph(genId(), '1'),
-        Glyph(genId(), '0'),
-      ],
-    ),
-  );
 
 exception Unhandled;
 
@@ -49,7 +30,7 @@ let rec insert_many_at = (n: int, xs: list('a), l: list('a)) =>
     n == 0 ? xs @ [h, ...t] : [h, ...insert_many_at(n - 1, xs, t)]
   };
 
-let insertIntoTree = (ast, path, index, newNode) => {
+/* let insertIntoTree = (ast, path, index, newNode) => {
   let newAst =
     switch (nodeForPath(path, ast)) {
     | Some(pathNode) =>
@@ -97,98 +78,177 @@ let insertManyIntoTree = (ast, path, index, newNodes) => {
 
 let removeNode = (nodeToRemove, ast) => {
   let newAst =
-    transform(
-      node => node == nodeToRemove ? None : Some(node),
-      ast,
-    );
+    transform(node => node == nodeToRemove ? None : Some(node), ast);
   switch (newAst) {
   | Some(node) => node
   | _ => raise(Unhandled)
-  }
-};
+  };
+}; */
 
 exception NoNodeForPath;
 
 type cursor_path = list(int);
 
-let processEvent =
-    (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
+let processEvent = (key: string, cursor: ref(tree_cursor), ast: tree_node) =>
   switch (key) {
   | "Meta"
   | "Shift"
   | "Alt"
   | "Control" => ignore()
   | "Backspace" => ignore()
-  | "ArrowLeft" => 
-    cursor := switch (cursor^.prev) {
-    | Some(node) =>
-      switch (node.value) {
-      | (_, Glyph(_)) => {prev: node.prev, next: Some(node), parent: cursor^.parent}
-      | (_, Frac({den})) =>
-        switch (den.value) {
-        | (_, Row({children})) => {prev: children.tail, next: None, parent: den}
-        | _ => raise(Invalid_Tree)
-        }
-      | (_, Parens({children})) => {prev: children.tail, next: None, parent: node}
-      | (_, SupSub({sub: Some(sub)})) => {prev: sub.tail, next: None, parent: node}
-      | (_, SupSub({sup: Some(sup)})) => {prev: sup.tail, next: None, parent: node}
-      | (_, Row({children})) => {prev: children.tail, next: None, parent: node}
-      | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
-      }
-    | None =>
-      let node = cursor^.parent;
-      switch (node.parent) {
-      | Some(parent) => {prev: node.prev, next: Some(node), parent}
-      | _ => cursor^
-      };
-    };
-  | "ArrowRight" =>
-    cursor := switch (cursor^.next) {
-      | Some(node) =>
-        switch (node.value) {
-        | (_, Glyph(_)) => {prev: Some(node), next: node.next, parent: cursor^.parent}
-        | (_, Frac({num})) =>
-          switch (num.value) {
-          | (_, Row({children})) => {prev: None, next: children.head, parent: num}
-          | _ => raise(Invalid_Tree)
-          }
-        | (_, Parens({children})) => {prev: None, next: children.head, parent: node}
-        | (_, SupSub({sub: Some(sub)})) => {prev: None, next: sub.head, parent: node}
-        | (_, SupSub({sup: Some(sup)})) => {prev: None, next: sup.head, parent: node}
-        | (_, Row({children})) => {prev: None, next: children.head, parent: node}
-        | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
-        }
-      | None =>
-        let node = cursor^.parent;
-        switch (node.parent) {
-        | Some(parent) => 
-          Js.log2("parent: %o", node)
-          Js.log2("grandparent: %o", node.parent);
-          /* switch (parent.value) {
-          | (_, Frac({num, den})) => 
-            if (node == num) {
-              {prev: None, next: den, parent: den}
-            } else {
-              {prev: Some(parent), next: parent.next, parent: parent.parent}
+  | "ArrowLeft" =>
+    cursor :=
+      (
+        switch (cursor^.prev) {
+        | Some(node) =>
+          switch (node.value) {
+          | (_, Glyph(_)) => {
+              prev: node.prev,
+              next: Some(node),
+              parent: cursor^.parent,
             }
-          | _ => {prev: Some(node), next: node.next, parent}
-          } */
-          /* TODO: create a function to get the tree_node within a tree_type */
-          {prev: Some(node), next: node.next, parent};
-        | _ => 
-          Js.log("invalid tree");
-          Js.log(node);
-          Js.log(cursor^);
-          cursor^
-        };
-      };
+          | (_, Frac({den})) =>
+            switch (den.value) {
+            | (_, Row({children})) => {
+                prev: children.tail,
+                next: None,
+                parent: den,
+              }
+            | _ => raise(Invalid_Tree)
+            }
+          | (_, Parens({children})) => {
+              prev: children.tail,
+              next: None,
+              parent: node,
+            }
+          | (_, SupSub({sub: Some(sub)})) => {
+              prev: sub.tail,
+              next: None,
+              parent: node,
+            }
+          | (_, SupSub({sup: Some(sup)})) => {
+              prev: sup.tail,
+              next: None,
+              parent: node,
+            }
+          | (_, Row({children})) => {
+              prev: children.tail,
+              next: None,
+              parent: node,
+            }
+          | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
+          }
+        | None =>
+          let node = cursor^.parent;
+          switch (node.parent) {
+          | Some(parent) =>
+            switch (parent.value) {
+            | (_, Frac({num, den})) =>
+              if (node == den) {
+                switch (num.value) {
+                | (_, Row({children})) => {
+                    prev: children.tail,
+                    next: None,
+                    parent: num,
+                  }
+                | _ => raise(Invalid_Tree)
+                };
+              } else {
+                switch (parent.parent) {
+                | Some(grandparent) => {
+                    prev: parent.prev,
+                    next: Some(parent),
+                    parent: grandparent,
+                  }
+                | _ => raise(Invalid_Tree)
+                };
+              }
+            | _ => {prev: node.prev, next: Some(node), parent}
+            }
+          | _ => cursor^ /* start of tree */
+          };
+        }
+      )
+  | "ArrowRight" =>
+    cursor :=
+      (
+        switch (cursor^.next) {
+        | Some(node) =>
+          switch (node.value) {
+          | (_, Glyph(_)) => {
+              prev: Some(node),
+              next: node.next,
+              parent: cursor^.parent,
+            }
+          | (_, Frac({num})) =>
+            switch (num.value) {
+            | (_, Row({children})) => {
+                prev: None,
+                next: children.head,
+                parent: num,
+              }
+            | _ => raise(Invalid_Tree)
+            }
+          | (_, Parens({children})) => {
+              prev: None,
+              next: children.head,
+              parent: node,
+            }
+          | (_, SupSub({sub: Some(sub)})) => {
+              prev: None,
+              next: sub.head,
+              parent: node,
+            }
+          | (_, SupSub({sup: Some(sup)})) => {
+              prev: None,
+              next: sup.head,
+              parent: node,
+            }
+          | (_, Row({children})) => {
+              prev: None,
+              next: children.head,
+              parent: node,
+            }
+          | (_, SupSub({sub: None, sup: None})) => raise(Invalid_Node)
+          }
+        | None =>
+          let node = cursor^.parent;
+          switch (node.parent) {
+          | Some(parent) =>
+            switch (parent.value) {
+            | (_, Frac({num, den})) =>
+              if (node == num) {
+                switch (den.value) {
+                | (_, Row({children})) => {
+                    prev: None,
+                    next: children.head,
+                    parent: den,
+                  }
+                | _ => raise(Invalid_Tree)
+                };
+              } else {
+                switch (parent.parent) {
+                | Some(grandparent) => {
+                    prev: Some(parent),
+                    next: parent.next,
+                    parent: grandparent,
+                  }
+                | _ => raise(Invalid_Tree)
+                };
+              }
+            | _ => {prev: Some(node), next: node.next, parent}
+            }
+          | _ => cursor^ /* end of tree */
+          };
+        }
+      )
   | "^" => ignore()
   | "_" => ignore()
   | "/" => ignore()
   | "(" => ignore()
   | _ =>
     let c = key.[0];
-    ignore()
+    ignore();
   };
 
 let ctx = CanvasRenderer.makeContext(1600, 600);
