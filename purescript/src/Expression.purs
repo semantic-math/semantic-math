@@ -10,7 +10,11 @@ module Expression
   , root
   , eval
   , NumericExprF
+  , NumericExpr
   , Mu
+  , roll
+  , unroll
+  , showExpr'
   ) where
   
 import Control.Apply (lift2)
@@ -22,8 +26,13 @@ import Effect (Effect)
 import Effect.Exception (throwException, error)
 import Matryoshka.Class.Recursive (class Recursive)
 import Matryoshka.Fold (para, cata)
-import Prelude (class Functor, class Show, map, show, ($), (<>), (+), (*), (-), (/), pure, liftA1)
+import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>), (<#>), (>>>))
 import Math as Math
+import Effect.Ref as Ref
+import Effect.Unsafe (unsafePerformEffect)
+import Data.Generic.Rep
+import Data.Generic.Rep.Show (genericShow)
+import Data.TacitString as TS
 
 newtype Mu f = In (f (Mu f))
 
@@ -35,6 +44,11 @@ unroll (In x) = x
 
 instance recursiveMu :: Functor f => Recursive (Mu f) f where
   project = unroll
+
+instance showMu :: (Show (f TS.TacitString), Functor f) => Show (Mu f) where
+  show (In x) = show $ x <#> (show >>> TS.hush)
+
+-- derive instance genericMu :: Generic (Mu a) _
 
 data NumericExprF a
   = NumLit    { id :: Int, value :: Number }
@@ -57,33 +71,47 @@ data NumericExprF a
 type NumericExpr = Mu NumericExprF
 
 derive instance functorNumericExprF :: Functor NumericExprF
+derive instance genericMuNumericExprF :: Generic (Mu NumericExprF) _
+derive instance genericNumericExprF :: Generic (NumericExprF a) _
+
+instance showNumericExprF :: Show a => Show (NumericExprF a) where
+  show = genericShow
+
+idRef :: Ref.Ref Int
+idRef = unsafePerformEffect (Ref.new 0)
+
+genId :: Effect Int
+genId = do
+  result <- Ref.read idRef
+  Ref.write (result + 1) idRef
+  pure result
 
 numLit :: Number -> NumericExpr
-numLit value = roll $ NumLit { id: 0, value }
+numLit value = roll $ NumLit { id: unsafePerformEffect genId, value }
 
 add :: Array NumericExpr -> NumericExpr
-add args = roll $ Add { id: 0, args }
+add args = roll $ Add { id: unsafePerformEffect genId, args }
 
 mul :: Array NumericExpr -> NumericExpr
-mul args = roll $ Mul { id: 0, args }
+mul args = roll $ Mul { id: unsafePerformEffect genId, args }
 
 sub :: NumericExpr -> NumericExpr -> NumericExpr
-sub minuend subtrahend = roll $ Sub { id: 0, minuend, subtrahend }
+sub minuend subtrahend = roll $ Sub { id: unsafePerformEffect genId, minuend, subtrahend }
 
 pow :: NumericExpr -> NumericExpr -> NumericExpr
-pow base exp = roll $ Pow { id: 0, base, exp }
+pow base exp = roll $ Pow { id: unsafePerformEffect genId, base, exp }
 
 abs :: NumericExpr -> NumericExpr
-abs arg = roll $ Abs { id: 0, arg }
+abs arg = roll $ Abs { id: unsafePerformEffect genId, arg }
 
 fact :: NumericExpr -> NumericExpr
-fact arg = roll $ Fact { id: 0, arg }
+fact arg = roll $ Fact { id: unsafePerformEffect genId, arg }
 
 sqrt :: NumericExpr -> NumericExpr
-sqrt radicand = roll $ Root { id: 0, index: Nothing, radicand }
+sqrt radicand = roll $ Root { id: unsafePerformEffect genId, index: Nothing, radicand }
 
 root :: NumericExpr -> NumericExpr -> NumericExpr
-root index radicand = roll $ Root { id: 0, index: Just index, radicand }
+root index radicand = roll $ Root { id: unsafePerformEffect genId, index: Just index, radicand }
 
 -- TODO: switch to operator precedence
 isAdd :: NumericExpr -> Boolean
@@ -101,7 +129,7 @@ wrapInParens :: String -> String
 wrapInParens a = "(" <> a <> ")"
 
 showExpr :: NumericExprF (Tuple NumericExpr String) -> String
-showExpr (NumLit {value}) = show value
+showExpr (NumLit {id, value}) = show value
 showExpr (Add {args}) = intercalate " + " $ map snd args
 showExpr (Mul {args}) = intercalate " * " $ 
   map (uncurry (\x y -> if isAdd x then wrapInParens y else y)) args
@@ -119,8 +147,8 @@ showExpr (Sel {indexes}) = "_" <> intercalate "," (map snd indexes)
 -- TODO: DotProd
 showExpr _ = ""
 
-instance showNumericExpr :: Show (Mu NumericExprF) where
-  show = para showExpr
+showExpr' :: NumericExpr -> String
+showExpr' = para showExpr
 
 evalExpr :: NumericExprF (Effect Number) -> Effect Number
 evalExpr (NumIdent {name}) = throwException $ error $ "variable '" <> name <> "' is undefined"
