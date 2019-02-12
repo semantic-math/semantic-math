@@ -15,3 +15,5 @@ main = do
   log $ showExpr' expr
   result <- eval expr
   log $ show result
+  log $ show (getId $ unroll $ numIdent "foo")
+  log $ show (getId $ unroll $ numLit 1.23)

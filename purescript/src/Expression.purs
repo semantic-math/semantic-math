@@ -1,5 +1,6 @@
 module Expression 
   ( numLit
+  , numIdent
   , add
   , mul
   , sub
@@ -15,24 +16,28 @@ module Expression
   , roll
   , unroll
   , showExpr'
+  , getId
   ) where
   
+import Data.Generic.Rep
+
 import Control.Apply (lift2)
 import Data.Foldable (intercalate, foldl)
--- import Data.Functor.Mu (Mu, unroll, roll)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.TacitString as TS
 import Data.Tuple (Tuple(..), snd, uncurry)
 import Effect (Effect)
-import Effect.Exception (throwException, error)
-import Matryoshka.Class.Recursive (class Recursive)
-import Matryoshka.Fold (para, cata)
-import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>), (<#>), (>>>))
-import Math as Math
+import Effect.Exception (error, throwException)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
-import Data.Generic.Rep
-import Data.Generic.Rep.Show (genericShow)
-import Data.TacitString as TS
+import Math as Math
+import Matryoshka.Class.Recursive (class Recursive)
+import Matryoshka.Fold (para, cata)
+import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<#>), (<>), (>>>))
+
+
+foreign import getId :: forall a. NumericExprF a -> Int
 
 newtype Mu f = In (f (Mu f))
 
@@ -50,20 +55,22 @@ instance showMu :: (Show (f TS.TacitString), Functor f) => Show (Mu f) where
 
 -- derive instance genericMu :: Generic (Mu a) _
 
+type Common = ( id :: Int )
+
 data NumericExprF a
-  = NumLit    { id :: Int, value :: Number }
-  | NumIdent  { id :: Int, name :: String }
-  | Add       { id :: Int, args :: Array a }
-  | Mul       { id :: Int, args :: Array a } -- TODO: differentiate implicit vs explicit multiplication
-  | Sub       { id :: Int, minuend :: a, subtrahend :: a }
-  | Div       { id :: Int, dividend :: a, divisor :: a }
-  | Pow       { id :: Int, base :: a, exp :: a }
-  | Abs       { id :: Int, arg :: a }
-  | Fact      { id :: Int, arg :: a }
-  | Root      { id :: Int, index :: Maybe a, radicand :: a }
-  | Log       { id :: Int, base :: Maybe a, arg :: a }
-  | Func      { id :: Int, name :: a, args :: Array a }
-  | Sel       { id :: Int, indexes :: Array a}
+  = NumLit    { value :: Number | Common }
+  | NumIdent  { name :: String | Common }
+  | Add       { args :: Array a | Common }
+  | Mul       { args :: Array a | Common } -- TODO: differentiate implicit vs explicit multiplication
+  | Sub       { minuend :: a, subtrahend :: a | Common }
+  | Div       { dividend :: a, divisor :: a | Common }
+  | Pow       { base :: a, exp :: a | Common }
+  | Abs       { arg :: a | Common }
+  | Fact      { arg :: a | Common }
+  | Root      { index :: Maybe a, radicand :: a | Common }
+  | Log       { base :: Maybe a, arg :: a | Common }
+  | Func      { name :: a, args :: Array a | Common }
+  | Sel       { indexes :: Array a | Common }
 --   | DotProd   { id :: Int, left :: VectorExprF a, right :: VectorExprF a }
   -- Sum
   -- Prod
@@ -77,6 +84,63 @@ derive instance genericNumericExprF :: Generic (NumericExprF a) _
 instance showNumericExprF :: Show a => Show (NumericExprF a) where
   show = genericShow
 
+-- findInSum :: forall a b c. Constructor _ a => Sum a b -> c
+-- findInSum sum = case sum of
+--   Inl a -> a
+--   Inr b -> b
+
+-- define a type class for getting the id from a Sum
+-- class GShow a where
+--   gShow :: a -> String
+
+-- Now provide instances for GShow for the appropriate representation types.
+-- Note: we don't have to implement all instances here.
+
+-- instance gShowU1 :: GShow U1 where
+--   gShow _ = ""
+
+-- instance gShowSum :: (GShow a, GShow b) => GShow (a + b) where
+--   gShow (Inl a) = gShow a
+--   gShow (Inr b) = gShow b
+
+-- getId' :: forall t45 t48 t51.
+--   Sum
+--     (Constructor t48
+--        (Argument
+--           { id :: Int
+--           | t51
+--           }
+--        )
+--     )
+--     t45
+--   -> Int
+-- getId' x = do
+--   case x of  
+--     Inl (Constructor (Argument a)) -> a.id
+--     Inr c -> 5
+
+-- getId :: NumericExpr -> Int
+-- getId expr = do
+--   let expr' = from $ unroll expr
+--   case expr' of
+--     Inl (Constructor (Argument a)) -> a.id
+--     Inr b -> do
+--       case b of
+--         Inl (Constructor (Argument a)) -> a.id
+--         Inr c -> do
+--           case c of
+--             Inl (Constructor (Argument a)) -> a.id
+--             Inr _ -> 10
+
+-- getId' :: NumericExpr -> Int
+-- getId' expr = do
+--   case unroll expr of
+--     NumLit {id} -> id
+--     NumIdent {id} -> id
+--     Add {id} -> id
+--     Mul {id} -> id
+--     _ -> -1
+
 idRef :: Ref.Ref Int
 idRef = unsafePerformEffect (Ref.new 0)
 
@@ -88,6 +152,9 @@ genId = do
 
 numLit :: Number -> NumericExpr
 numLit value = roll $ NumLit { id: unsafePerformEffect genId, value }
+
+numIdent :: String -> NumericExpr
+numIdent name = roll $ NumIdent { id: unsafePerformEffect genId, name }
 
 add :: Array NumericExpr -> NumericExpr
 add args = roll $ Add { id: unsafePerformEffect genId, args }
@@ -125,18 +192,15 @@ isMul x = case unroll x of
   Mul {} -> true
   _ -> false
 
-wrapInParens :: String -> String
-wrapInParens a = "(" <> a <> ")"
-
 showExpr :: NumericExprF (Tuple NumericExpr String) -> String
 showExpr (NumLit {id, value}) = show value
 showExpr (Add {args}) = intercalate " + " $ map snd args
 showExpr (Mul {args}) = intercalate " * " $ 
-  map (uncurry (\x y -> if isAdd x then wrapInParens y else y)) args
+  map (uncurry (\x y -> if isAdd x then "(" <> y <> ")" else y)) args
 showExpr (Sub {minuend, subtrahend}) = (snd minuend) <> " - " <> (snd subtrahend)
 showExpr (Div {dividend, divisor}) = (snd dividend) <> " - " <> (snd divisor)
 showExpr (Pow {base, exp}) = do
-  let exp' = uncurry (\x y -> if (isAdd x) then wrapInParens y else y) exp
+  let exp' = uncurry (\x y -> if (isAdd x) then "(" <> y <> ")" else y) exp
   (snd base) <> "^" <> exp'
 showExpr (Abs {arg: (Tuple _ arg)}) = "|" <> arg <> "|"
 showExpr (Fact {arg: (Tuple _ arg)}) = arg <> "!"
