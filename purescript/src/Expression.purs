@@ -12,9 +12,6 @@ module Expression
   , eval
   , NumericExprF
   , NumericExpr
-  , Mu
-  , roll
-  , unroll
   , showExpr'
   , getId
   ) where
@@ -23,37 +20,20 @@ import Data.Generic.Rep
 
 import Control.Apply (lift2)
 import Data.Foldable (intercalate, foldl)
+import Data.Functor.Mu (Mu, roll, unroll)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.TacitString as TS
 import Data.Tuple (Tuple(..), snd, uncurry)
 import Effect (Effect)
 import Effect.Exception (error, throwException)
 import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Math as Math
-import Matryoshka.Class.Recursive (class Recursive)
 import Matryoshka.Fold (para, cata)
-import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<#>), (<>), (>>>))
+import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>))
 
 
 foreign import getId :: forall a. NumericExprF a -> Int
-
-newtype Mu f = In (f (Mu f))
-
-roll :: forall f. f (Mu f) -> Mu f
-roll = In
-
-unroll :: forall f. Mu f -> f (Mu f)
-unroll (In x) = x
-
-instance recursiveMu :: Functor f => Recursive (Mu f) f where
-  project = unroll
-
-instance showMu :: (Show (f TS.TacitString), Functor f) => Show (Mu f) where
-  show (In x) = show $ x <#> (show >>> TS.hush)
-
--- derive instance genericMu :: Generic (Mu a) _
 
 type Common = ( id :: Int )
 
@@ -78,7 +58,6 @@ data NumericExprF a
 type NumericExpr = Mu NumericExprF
 
 derive instance functorNumericExprF :: Functor NumericExprF
-derive instance genericMuNumericExprF :: Generic (Mu NumericExprF) _
 derive instance genericNumericExprF :: Generic (NumericExprF a) _
 
 instance showNumericExprF :: Show a => Show (NumericExprF a) where

@@ -2,10 +2,10 @@ module Main where
 
 import Expression
 
+import Data.Functor.Mu (unroll)
 import Effect (Effect)
 import Effect.Console (log)
-import Prelude (Unit, discard, ($), show, bind)
-
+import Prelude (Unit, discard, ($), (<>), show, bind)
 
 main :: Effect Unit
 main = do
@@ -15,5 +15,5 @@ main = do
   log $ showExpr' expr
   result <- eval expr
   log $ show result
-  log $ show (getId $ unroll $ numIdent "foo")
-  log $ show (getId $ unroll $ numLit 1.23)
+  log $ "foo's id = " <> show (getId $ unroll $ numIdent "foo")
+  log $ "1.23's id = " <> show (getId $ unroll $ numLit 1.23)
