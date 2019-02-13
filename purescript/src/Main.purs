@@ -15,5 +15,5 @@ main = do
   log $ showExpr' expr
   result <- eval expr
   log $ show result
-  log $ "foo's id = " <> show (getId $ unroll $ numIdent "foo")
-  log $ "1.23's id = " <> show (getId $ unroll $ numLit 1.23)
+  log $ "foo's id = " <> show (getId $ numIdent "foo")
+  log $ "1.23's id = " <> show (getId $ numLit 1.23)

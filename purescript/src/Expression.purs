@@ -32,8 +32,7 @@ import Math as Math
 import Matryoshka.Fold (para, cata)
 import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>))
 
-
-foreign import getId :: forall a. NumericExprF a -> Int
+foreign import getId :: NumericExpr -> Int
 
 type Common = ( id :: Int )
 
@@ -62,63 +61,6 @@ derive instance genericNumericExprF :: Generic (NumericExprF a) _
 
 instance showNumericExprF :: Show a => Show (NumericExprF a) where
   show = genericShow
-
--- findInSum :: forall a b c. Constructor _ a => Sum a b -> c
--- findInSum sum = case sum of
---   Inl a -> a
---   Inr b -> b
-
--- define a type class for getting the id from a Sum
--- class GShow a where
---   gShow :: a -> String
-
--- Now provide instances for GShow for the appropriate representation types.
--- Note: we don't have to implement all instances here.
-
--- instance gShowU1 :: GShow U1 where
---   gShow _ = ""
-
--- instance gShowSum :: (GShow a, GShow b) => GShow (a + b) where
---   gShow (Inl a) = gShow a
---   gShow (Inr b) = gShow b
-
--- getId' :: forall t45 t48 t51.
---   Sum
---     (Constructor t48
---        (Argument
---           { id :: Int
---           | t51
---           }
---        )
---     )
---     t45
---   -> Int
--- getId' x = do
---   case x of  
---     Inl (Constructor (Argument a)) -> a.id
---     Inr c -> 5
-
--- getId :: NumericExpr -> Int
--- getId expr = do
---   let expr' = from $ unroll expr
---   case expr' of
---     Inl (Constructor (Argument a)) -> a.id
---     Inr b -> do
---       case b of
---         Inl (Constructor (Argument a)) -> a.id
---         Inr c -> do
---           case c of
---             Inl (Constructor (Argument a)) -> a.id
---             Inr _ -> 10
-
--- getId' :: NumericExpr -> Int
--- getId' expr = do
---   case unroll expr of
---     NumLit {id} -> id
---     NumIdent {id} -> id
---     Add {id} -> id
---     Mul {id} -> id
---     _ -> -1
 
 idRef :: Ref.Ref Int
 idRef = unsafePerformEffect (Ref.new 0)
