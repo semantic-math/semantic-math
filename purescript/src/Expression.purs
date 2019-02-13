@@ -26,11 +26,11 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..), snd, uncurry)
 import Effect (Effect)
 import Effect.Exception (error, throwException)
-import Effect.Ref as Ref
 import Effect.Unsafe (unsafePerformEffect)
 import Math as Math
 import Matryoshka.Fold (para, cata)
-import Prelude (class Functor, class Show, bind, discard, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>))
+import Prelude (class Functor, class Show, liftA1, map, pure, show, ($), (*), (+), (-), (/), (<>))
+import UniqueId (genId)
 
 foreign import getId :: NumericExpr -> Int
 
@@ -62,14 +62,6 @@ derive instance genericNumericExprF :: Generic (NumericExprF a) _
 instance showNumericExprF :: Show a => Show (NumericExprF a) where
   show = genericShow
 
-idRef :: Ref.Ref Int
-idRef = unsafePerformEffect (Ref.new 0)
-
-genId :: Effect Int
-genId = do
-  result <- Ref.read idRef
-  Ref.write (result + 1) idRef
-  pure result
 
 numLit :: Number -> NumericExpr
 numLit value = roll $ NumLit { id: unsafePerformEffect genId, value }
