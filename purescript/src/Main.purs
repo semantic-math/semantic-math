@@ -12,7 +12,7 @@ main = do
   log "Hello world!"
   let expr = mul [numLit 4.0, add [numLit 2.0, numLit 3.0]] :: NumericExpr
   log $ show $ unroll expr
-  log $ showExpr' expr
+  log $ showExpr expr
   result <- eval expr
   log $ show result
   log $ "foo's id = " <> show (getId $ numIdent "foo")

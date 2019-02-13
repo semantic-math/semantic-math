@@ -12,7 +12,7 @@ module Expression
   , eval
   , NumericExprF
   , NumericExpr
-  , showExpr'
+  , showExpr
   , getId
   ) where
   
@@ -113,27 +113,27 @@ isMul x = case unroll x of
   Mul {} -> true
   _ -> false
 
-showExpr :: NumericExprF (Tuple NumericExpr String) -> String
-showExpr (NumLit {id, value}) = show value
-showExpr (Add {args}) = intercalate " + " $ map snd args
-showExpr (Mul {args}) = intercalate " * " $ 
+_showExpr :: NumericExprF (Tuple NumericExpr String) -> String
+_showExpr (NumLit {id, value}) = show value
+_showExpr (Add {args}) = intercalate " + " $ map snd args
+_showExpr (Mul {args}) = intercalate " * " $ 
   map (uncurry (\x y -> if isAdd x then "(" <> y <> ")" else y)) args
-showExpr (Sub {minuend, subtrahend}) = (snd minuend) <> " - " <> (snd subtrahend)
-showExpr (Div {dividend, divisor}) = (snd dividend) <> " - " <> (snd divisor)
-showExpr (Pow {base, exp}) = do
+_showExpr (Sub {minuend, subtrahend}) = (snd minuend) <> " - " <> (snd subtrahend)
+_showExpr (Div {dividend, divisor}) = (snd dividend) <> " - " <> (snd divisor)
+_showExpr (Pow {base, exp}) = do
   let exp' = uncurry (\x y -> if (isAdd x) then "(" <> y <> ")" else y) exp
   (snd base) <> "^" <> exp'
-showExpr (Abs {arg: (Tuple _ arg)}) = "|" <> arg <> "|"
-showExpr (Fact {arg: (Tuple _ arg)}) = arg <> "!"
-showExpr (Root {index, radicand}) = do
+_showExpr (Abs {arg: (Tuple _ arg)}) = "|" <> arg <> "|"
+_showExpr (Fact {arg: (Tuple _ arg)}) = arg <> "!"
+_showExpr (Root {index, radicand}) = do
   let index' = snd $ fromMaybe (Tuple (numLit 2.0) "2") index
   "root(" <> index' <> ", " <> (snd radicand) <> ")"
-showExpr (Sel {indexes}) = "_" <> intercalate "," (map snd indexes)
+_showExpr (Sel {indexes}) = "_" <> intercalate "," (map snd indexes)
 -- TODO: DotProd
-showExpr _ = ""
+_showExpr _ = ""
 
-showExpr' :: NumericExpr -> String
-showExpr' = para showExpr
+showExpr :: NumericExpr -> String
+showExpr = para _showExpr
 
 evalExpr :: NumericExprF (Effect Number) -> Effect Number
 evalExpr (NumIdent {name}) = throwException $ error $ "variable '" <> name <> "' is undefined"
