@@ -33,7 +33,7 @@ type Box =
 
 data LayoutNodeF a
   = Box { dist :: Dist, box :: Box }
-  | Glyph { char :: Char, size :: Number } -- , metrics :: Metrics
+  | Glyph { char :: Char, size :: Number} -- , metrics :: Metrics }
   | Kern { dist :: Dist }
   | Rule { dim :: Dim }
 
