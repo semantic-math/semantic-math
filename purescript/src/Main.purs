@@ -15,12 +15,7 @@ import Metrics (Metrics(..))
 import Expression (NumericExpr, add, eval, getId, mul, numIdent, numLit, showExpr)
 import Editor (glyph, row)
 import Data.Functor.Mu (unroll)
-
--- main :: Effect Unit
--- main = do
-
-
-data Result = ResultA {a::Int}
+-- import Debug.Trace
 
 main :: Effect Unit
 main = void $ launchAff $ do
@@ -38,6 +33,7 @@ main = void $ launchAff $ do
         let Metrics foo = unsafePartial $ fromRight $ decodeJson body
         log $ show foo.unitsPerEm
         log $ show foo.glyphMetrics
+        -- let _ = spy "Hello" foo.glyphMetrics
         log "finished"
         log "Hello world!"
         let expr = mul [numLit 4.0, add [numLit 2.0, numLit 3.0]] :: NumericExpr
